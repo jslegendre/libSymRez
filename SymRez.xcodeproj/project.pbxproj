@@ -9,12 +9,28 @@
 /* Begin PBXBuildFile section */
 		0980EE312446A5B500F28911 /* SymRez.h in Headers */ = {isa = PBXBuildFile; fileRef = 0980EE2F2446A5B500F28911 /* SymRez.h */; };
 		0980EE322446A5B500F28911 /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
+		0986822327719CC100E01D0D /* Tests.m in Sources */ = {isa = PBXBuildFile; fileRef = 0986822227719CC100E01D0D /* Tests.m */; };
+		0986822427719CC100E01D0D /* libSymRez.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0980EE282446A37A00F28911 /* libSymRez.dylib */; };
+		0986822A27719DD600E01D0D /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		0986822527719CC100E01D0D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0980EE202446A37A00F28911 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0980EE272446A37A00F28911;
+			remoteInfo = SymRez;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		0970FE212771B5C600B3012D /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; name = module.modulemap; path = Sources/module.modulemap; sourceTree = "<group>"; };
 		0980EE282446A37A00F28911 /* libSymRez.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libSymRez.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
-		0980EE2F2446A5B500F28911 /* SymRez.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SymRez.h; sourceTree = "<group>"; };
-		0980EE302446A5B500F28911 /* SymRez.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = SymRez.c; sourceTree = "<group>"; };
+		0980EE2F2446A5B500F28911 /* SymRez.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SymRez.h; path = Sources/SymRez.h; sourceTree = "<group>"; };
+		0980EE302446A5B500F28911 /* SymRez.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = SymRez.c; path = Sources/SymRez.c; sourceTree = "<group>"; };
+		0986822027719CC100E01D0D /* Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0986822227719CC100E01D0D /* Tests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -25,6 +41,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0986821D27719CC100E01D0D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0986822427719CC100E01D0D /* libSymRez.dylib in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -32,7 +56,9 @@
 			isa = PBXGroup;
 			children = (
 				0980EE2F2446A5B500F28911 /* SymRez.h */,
+				0970FE212771B5C600B3012D /* module.modulemap */,
 				0980EE302446A5B500F28911 /* SymRez.c */,
+				0986822127719CC100E01D0D /* Tests */,
 				0980EE292446A37A00F28911 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +67,17 @@
 			isa = PBXGroup;
 			children = (
 				0980EE282446A37A00F28911 /* libSymRez.dylib */,
+				0986822027719CC100E01D0D /* Tests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0986822127719CC100E01D0D /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				0986822227719CC100E01D0D /* Tests.m */,
+			);
+			path = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -76,6 +111,24 @@
 			productReference = 0980EE282446A37A00F28911 /* libSymRez.dylib */;
 			productType = "com.apple.product-type.library.dynamic";
 		};
+		0986821F27719CC100E01D0D /* Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0986822927719CC100E01D0D /* Build configuration list for PBXNativeTarget "Tests" */;
+			buildPhases = (
+				0986821C27719CC100E01D0D /* Sources */,
+				0986821D27719CC100E01D0D /* Frameworks */,
+				0986821E27719CC100E01D0D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0986822627719CC100E01D0D /* PBXTargetDependency */,
+			);
+			name = Tests;
+			productName = Tests;
+			productReference = 0986822027719CC100E01D0D /* Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -87,6 +140,9 @@
 				TargetAttributes = {
 					0980EE272446A37A00F28911 = {
 						CreatedOnToolsVersion = 11.1;
+					};
+					0986821F27719CC100E01D0D = {
+						CreatedOnToolsVersion = 13.2;
 					};
 				};
 			};
@@ -104,9 +160,20 @@
 			projectRoot = "";
 			targets = (
 				0980EE272446A37A00F28911 /* SymRez */,
+				0986821F27719CC100E01D0D /* Tests */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0986821E27719CC100E01D0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		0980EE252446A37A00F28911 /* Sources */ = {
@@ -117,7 +184,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		0986821C27719CC100E01D0D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0986822327719CC100E01D0D /* Tests.m in Sources */,
+				0986822A27719DD600E01D0D /* SymRez.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0986822627719CC100E01D0D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0980EE272446A37A00F28911 /* SymRez */;
+			targetProxy = 0986822527719CC100E01D0D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0980EE2A2446A37A00F28911 /* Debug */ = {
@@ -170,7 +254,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -222,7 +306,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -232,11 +316,16 @@
 		0980EE2D2446A37A00F28911 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APPLY_RULES_IN_COPY_HEADERS = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = NO;
 				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				EXECUTABLE_PREFIX = lib;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
+				MODULEMAP_FILE = "$(SRCROOT)/SymRez/Sources/module.modulemap";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 			};
@@ -245,13 +334,52 @@
 		0980EE2E2446A37A00F28911 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APPLY_RULES_IN_COPY_HEADERS = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				EXECUTABLE_PREFIX = lib;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
+				MODULEMAP_FILE = "$(SRCROOT)/SymRez/Sources/module.modulemap";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		0986822727719CC100E01D0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9T88PYL48;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Debug;
+		};
+		0986822827719CC100E01D0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G9T88PYL48;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
 			};
 			name = Release;
 		};
@@ -272,6 +400,15 @@
 			buildConfigurations = (
 				0980EE2D2446A37A00F28911 /* Debug */,
 				0980EE2E2446A37A00F28911 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0986822927719CC100E01D0D /* Build configuration list for PBXNativeTarget "Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0986822727719CC100E01D0D /* Debug */,
+				0986822827719CC100E01D0D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

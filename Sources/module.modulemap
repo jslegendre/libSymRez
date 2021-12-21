@@ -1,0 +1,4 @@
+module SymRez {
+    header "SymRez.h"
+    export *
+}
