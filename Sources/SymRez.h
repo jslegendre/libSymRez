@@ -50,6 +50,10 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol);
     @param callback callback for processing each iteration. Return true to stop loop. */
 void sr_for_each(symrez_t symrez, symrez_function_t callback);
 
+/*! @function sr_free
+    @abstract Release all resources allocated for this symrez object */
+void sr_free(symrez_t);
+
 /*! @function symrez_resolve_once
     @abstract Lookup a single symbol. Does not allocate memory but not recommended for multiple lookups
     @param image_name Name or full path of the library to symbolicate. Pass NULL for current executable

@@ -43,7 +43,7 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     CFStringRef (*_CFStringCreateWithCString)(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) = NULL;
     symrez_t sr = symrez_new("CoreFoundation");
     _CFStringCreateWithCString = sr_resolve_symbol(sr, "_CFStringCreateWithCString");
-    free(sr);
+    sr_free(sr);
     
     CFStringRef cfstr1 = CFStringCreateWithCString(kCFAllocatorDefault, "test str", kCFStringEncodingUTF8);
     CFStringRef cfstr2 = _CFStringCreateWithCString(kCFAllocatorDefault, "test str", kCFStringEncodingUTF8);
@@ -67,15 +67,23 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     void *_printf = (void*)printf;
     symrez_t sr = symrez_new("libsystem_c.dylib");
     void *sr_printf = sr_resolve_symbol(sr, "_printf");
-    free(sr);
+    sr_free(sr);
     XCTAssertEqual(_printf, sr_printf);
+}
+
+- (void)testResolveSymbol_notFound {
+    symrez_t sr = symrez_new("libsystem_c.dylib");
+    void *sr_sym = sr_resolve_symbol(sr, "abc123");
+    sr_free(sr);
+    
+    XCTAssertNil((__bridge id)sr_sym);
 }
 
 - (void)testResolveSymbol_private_CFStringHash {
     void *_CFStringHash = NULL;
     symrez_t sr = symrez_new("CoreFoundation");
     _CFStringHash = sr_resolve_symbol(sr, "___CFStringHash");
-    free(sr);
+    sr_free(sr);
     XCTAssertNotNil((__bridge id)_CFStringHash);
 }
 

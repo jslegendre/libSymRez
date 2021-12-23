@@ -38,7 +38,6 @@ struct symrez {
     uint32_t nsyms;
 };
 
-__attribute__((__always_inline__))
 static int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
     size_t fast = len/sizeof(size_t) + 1;
     size_t offset = (fast-1)*sizeof(size_t);
@@ -173,7 +172,7 @@ int _find_image(const char *image_name, mach_header_t *hdr) {
         
         char *img = strrchr(p, '/');
         img = (char *)&img[1];
-        if(strcmp(img, image_name) == 0) {
+        if(_strncmp_fast(img, image_name, strlen(image_name)) == 0) {
             found = i;
             break;
         }
@@ -277,6 +276,10 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol) {
 #endif
     
     return addr;
+}
+
+void sr_free(symrez_t symrez) {
+    free(symrez);
 }
 
 void * symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
