@@ -63,6 +63,21 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     CFRelease(cfstr2);
 }
 
+- (void)testResolveReExportedSymbol_CGSClearWindowTags {
+    symrez_t sr = symrez_new("CoreGraphics");
+    void *sym = sr_resolve_symbol(sr, "_CGSClearWindowTags");
+    sr_free(sr);
+    
+    XCTAssertTrue(sym);
+}
+
+- (void)testResolveSymbolFromReExportedLibrary_strcmp {
+    symrez_t sr = symrez_new("/usr/lib/libSystem.B.dylib");
+    void *sym = sr_resolve_symbol(sr, "_strcmp");
+    sr_free(sr);
+    XCTAssertTrue(sym);
+}
+
 - (void)testResolveSymbol_public_printf {
     void *_printf = (void*)printf;
     symrez_t sr = symrez_new("libsystem_c.dylib");
@@ -84,7 +99,7 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     symrez_t sr = symrez_new("CoreFoundation");
     _CFStringHash = sr_resolve_symbol(sr, "___CFStringHash");
     sr_free(sr);
-    XCTAssertNotNil((__bridge id)_CFStringHash);
+    XCTAssertTrue(_CFStringHash);
 }
 
 - (void)testFindImage_name_path {
