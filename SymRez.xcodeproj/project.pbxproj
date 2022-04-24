@@ -27,7 +27,7 @@
 /* Begin PBXFileReference section */
 		0970FE212771B5C600B3012D /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; name = module.modulemap; path = Sources/module.modulemap; sourceTree = "<group>"; };
 		0980EE282446A37A00F28911 /* libSymRez.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libSymRez.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
-		0980EE2F2446A5B500F28911 /* SymRez.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SymRez.h; path = Sources/SymRez.h; sourceTree = "<group>"; };
+		0980EE2F2446A5B500F28911 /* SymRez.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SymRez.h; path = Sources/include/SymRez.h; sourceTree = "<group>"; };
 		0980EE302446A5B500F28911 /* SymRez.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = SymRez.c; path = Sources/SymRez.c; sourceTree = "<group>"; };
 		0986822027719CC100E01D0D /* Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0986822227719CC100E01D0D /* Tests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests.m; sourceTree = "<group>"; };
@@ -358,6 +358,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = G9T88PYL48;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				MACOSX_DEPLOYMENT_TARGET = 12.1;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
@@ -375,6 +376,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = G9T88PYL48;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				MACOSX_DEPLOYMENT_TARGET = 12.1;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;

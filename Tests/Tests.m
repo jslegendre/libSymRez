@@ -7,7 +7,7 @@
 //
 
 #import <XCTest/XCTest.h>
-#import "../Sources/SymRez.h"
+#import <SymRez.h>
 #import <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/dyld_images.h>
