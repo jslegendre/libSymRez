@@ -11,6 +11,7 @@
 #import <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/dyld_images.h>
+#include <mach-o/ldsyms.h>
 
 extern mach_header_t _get_base_addr(void);
 extern int _find_image(const char *image_name, mach_header_t *hdr);
@@ -22,7 +23,15 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
 @implementation Tests
 
 - (void)testGetBaseAddress {
-    mach_header_t m1 = (mach_header_t)_dyld_get_image_header(0);
+    mach_header_t m1;
+    uint32_t image_count = _dyld_image_count();
+    for (uint32_t i = 0; i < image_count; i++) {
+        m1 = (const struct mach_header_64 *)_dyld_get_image_header(i);
+        if (m1->filetype == MH_EXECUTE) {
+            break;
+        }
+    }
+    
     mach_header_t m2 = _get_base_addr();
     XCTAssertEqual(m1, m2);
 }
