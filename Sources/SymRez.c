@@ -15,6 +15,7 @@
 #include <mach-o/nlist.h>
 #include <mach-o/getsect.h>
 #include <mach/mach_vm.h>
+#include <sys/syslimits.h>
 
 #if __has_feature(ptrauth_calls)
 #include <ptrauth.h>
@@ -75,7 +76,7 @@ static int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
 }
 
 
-static intptr_t read_uleb128(void** ptr, const uint8_t* end) {
+static intptr_t read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
     int         bit = 0;
@@ -94,14 +95,14 @@ static intptr_t read_uleb128(void** ptr, const uint8_t* end) {
     return (uintptr_t)result;
 }
 
-const uint8_t* trieWalk(const uint8_t* start, const uint8_t* end, const char* s) {
+static const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* s) {
     const uint8_t* p = start;
     while (p != NULL) {
         uintptr_t terminalSize = *p++;
         if ( terminalSize > 127 ) {
             // except for re-export-with-rename, all terminal sizes fit in one byte
             --p;
-            terminalSize = read_uleb128((void**)&p, end);
+            terminalSize = read_uleb128((void**)&p);
         }
         if ((*s == '\0') && (terminalSize != 0)) {
             return p;
@@ -142,7 +143,7 @@ const uint8_t* trieWalk(const uint8_t* start, const uint8_t* end, const char* s)
                 }
             } else {
                 ++p;
-                nodeOffset = read_uleb128((void**)&p, end);
+                nodeOffset = read_uleb128((void**)&p);
                 if ((nodeOffset == 0) || ( &start[nodeOffset] > end)) {
                     return NULL;
                 }
@@ -209,7 +210,7 @@ static load_command_t _find_load_command(mach_header_t mh, uint32_t cmd) {
     return foundlc;
 }
 
-char * dylib_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
+static const char * _dylib_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
     char *dylib = NULL;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
     while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && ordinal > 0) {
@@ -376,14 +377,14 @@ static void* _resolve_reexported_symbol(symrez_t symrez, const char *symbol) {
     void *exportTrie = symrez->exports;
     void *addr = NULL;
     void *end = (void*)(exportTrie + symrez->exports_size);
-    const uint8_t* node = trieWalk(exportTrie, end, symbol);
+    const uint8_t* node = walk_export_trie(exportTrie, end, symbol);
     if (node) {
         const uint8_t* p = node;
-        const uintptr_t flags = read_uleb128((void**)&p, end);
+        const uintptr_t flags = read_uleb128((void**)&p);
         if ( flags & EXPORT_SYMBOL_FLAGS_REEXPORT ) {
-            uintptr_t ordinal = read_uleb128((void**)&p, end);
-            const char* importedName = (char*)p;
-            char *dylib = dylib_for_ordinal(mh, ordinal);
+            uintptr_t ordinal = read_uleb128((void**)&p);
+            const char *importedName = (char*)p;
+            const char *dylib = _dylib_for_ordinal(mh, ordinal);
             
             if (!dylib) return NULL;
             
@@ -460,6 +461,117 @@ void sr_free(symrez_t symrez) {
     free(symrez);
 }
 
+static void sr_for_each_in_trie_do_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
+    uintptr_t flags = read_uleb128((void**)&node);
+    switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
+        case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
+            uintptr_t addr = read_uleb128((void**)&node);
+            if (work(sym, (void*)addr)) return;
+            break;
+        }
+        case EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION:
+        case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
+            uintptr_t offset = read_uleb128((void**)&node);
+            uintptr_t addr = (uintptr_t)(symrez->header) + offset;
+            if (work(sym, (void*)addr)) return;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+/*
+ Sample export tree of this library:
+             s
+            / \
+           /   \
+          /   ymrez_
+         /     / \
+        /     /   \
+       /   "new" "init"
+      r_
+     / \
+    f  resolve_symbol
+   / \
+ ree or_each
+
+Do preorder traversal, accumulating symbol name through nodes
+
+ parent_str = "sr_f"
+ for (child in parent) {
+    child_str = strcpy(parent_str)
+    strcat(child_str, node_get_string(child))
+ }
+ */
+static void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
+    void *exportTrie = symrez->exports;
+    const uint8_t *start = exportTrie;
+
+    struct stack_node {
+        const uint8_t* node;
+        char sym[PATH_MAX];
+    };
+
+    struct stack_node node_stack[PATH_MAX];
+    int stack_top = 0;
+    node_stack[stack_top++].node = start;
+    
+    while (stack_top) {
+        const uint8_t *node = node_stack[--stack_top].node;
+        char *sym = node_stack[stack_top].sym;
+        
+        const uint8_t *p = node;
+        uintptr_t terminal_size = *p++;
+        if ( terminal_size > 127 ) {
+            --p;
+            terminal_size = read_uleb128((void**)&p);
+        }
+
+        const uint8_t* children = p + terminal_size;
+        uint8_t child_count = *children++;
+        if (child_count == 0) {
+            sr_for_each_in_trie_do_callback(symrez, ++node, sym, work);
+            memset(sym, 0, PATH_MAX);
+            continue;
+        }
+
+        p = children;
+        
+        // Current node has been popped and will be consumed by first child.
+        // Save current string length in order to restore parent string for
+        // subsequent children. Reusing the parent node for the first child
+        // saves an strncpy and PATH_MAX amount of stack memory (per iteration).
+        size_t parent_len = strlen(sym);
+        for (; child_count > 0; --child_count) {
+            size_t child_len = strlen((char*)p);
+            strncpy(&sym[parent_len], (char*)p, child_len);
+            sym[parent_len + child_len] = '\0';
+            p += child_len + 1;
+            
+            const uint8_t *next_node = p;
+            uintptr_t nodeOffset = read_uleb128((void**)&next_node);
+            if (nodeOffset != 0) {
+                next_node = &start[nodeOffset];
+                node_stack[stack_top].node = next_node;
+            }
+            
+            ++stack_top;
+            
+            if (child_count) {
+                // Restore string buffer of parent node for sibling
+                strncpy(node_stack[stack_top].sym, sym, parent_len);
+                sym = node_stack[stack_top].sym;
+                
+                while ((*p & 0x80) != 0) {
+                    ++p;
+                }
+                ++p;
+            }
+        }
+    }
+}
+
 void sr_for_each(symrez_t symrez, symrez_function_t work) {
     strtab_t strtab = symrez->strtab;
     symtab_t symtab = symrez->symtab;
@@ -470,13 +582,16 @@ void sr_for_each(symrez_t symrez, symrez_function_t work) {
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-        if (nl->n_sect == 0) continue; // External symbol
-        const char *str = (const char *)strtab + nl->n_un.n_strx;
+        if ((nl->n_type & N_STAB) || nl->n_sect == 0) continue; // External symbol
+        char *str = (char *)strtab + nl->n_un.n_strx;
         addr = (void *)(nl->n_value + slide);
         if (work(str, addr)) {
             break;
         }
     }
+    
+    if (symrez->exports_size)
+        sr_for_each_in_trie(symrez, work);
 }
 
 void * symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
