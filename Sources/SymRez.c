@@ -425,7 +425,12 @@ static void* _resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
                     goto next;
                 }
                 
-                addr = _resolve_local_symbol(&sr, symbol);
+                if (lc->cmd == LC_REEXPORT_DYLIB) {
+                    addr = sr_resolve_symbol(&sr, symbol);
+                } else {
+                    addr = _resolve_local_symbol(&sr, symbol);
+                }
+                
                 if (addr) {
                     return addr;
                 }
