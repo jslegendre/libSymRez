@@ -487,44 +487,44 @@ static void sr_for_each_in_trie_do_callback(symrez_t symrez, const uint8_t *node
 }
 
 /*
- Sample export tree of this library:
+Example export tree of this library:
              s
             / \
            /   \
           /   ymrez_
          /     / \
         /     /   \
-       /   "new" "init"
+       /    new  init
       r_
      / \
     f  resolve_symbol
    / \
  ree or_each
 
-Do preorder traversal, accumulating symbol name through nodes
-
- parent_str = "sr_f"
- for (child in parent) {
-    child_str = strcpy(parent_str)
-    strcat(child_str, node_get_string(child))
- }
+Consider each node in the export tree a symbol prefix and it's children to be suffixes.
+The leaves of the tree represent complete symbols.
+ 
+Traverse the tree in iterative preorder, accumulating complete symbols by appending the
+suffix of the current node to the prefix of the parent node.
  */
 static void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
-    void *exportTrie = symrez->exports;
-    const uint8_t *start = exportTrie;
+    void *export_trie = symrez->exports;
+    const uint8_t *start = export_trie;
 
     struct stack_node {
         const uint8_t* node;
         char sym[PATH_MAX];
+        size_t sym_len;
     };
 
     struct stack_node node_stack[PATH_MAX];
-    int stack_top = 0;
+    size_t stack_top = 0;
     node_stack[stack_top++].node = start;
-    
+    node_stack[stack_top].sym_len = 0;
     while (stack_top) {
         const uint8_t *node = node_stack[--stack_top].node;
         char *sym = node_stack[stack_top].sym;
+        size_t sym_len = node_stack[stack_top].sym_len;
         
         const uint8_t *p = node;
         uintptr_t terminal_size = *p++;
@@ -535,45 +535,48 @@ static void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
 
         const uint8_t* children = p + terminal_size;
         uint8_t child_count = *children++;
-        if (child_count == 0) {
+        if (child_count == 0) { // Handle leaf node
             sr_for_each_in_trie_do_callback(symrez, ++node, sym, work);
-            memset(sym, 0, PATH_MAX);
             continue;
         }
 
         p = children;
+        size_t parent_len = sym_len;
         
-        // Current node has been popped and will be consumed by first child.
-        // Save current string length in order to restore parent string for
-        // subsequent children. Reusing the parent node for the first child
-        // saves an strncpy and PATH_MAX amount of stack memory (per iteration).
-        size_t parent_len = strlen(sym);
-        for (; child_count > 0; --child_count) {
+        // First child needs to be first to get popped so
+        // increment stack_top by child_count and iterate
+        // over children first to last. Decrement stack_top
+        // each time to place siblings from top to bottom,
+        // maintaining preorder.
+        // The current node is popped and will be replaced
+        // by the last child.
+        stack_top += child_count;
+        for (int i = child_count; i > 0; --i) {
+            char *child_sym = node_stack[--stack_top].sym;
+            
+            // At child_count, stack will be at original
+            // (parent) stack_node, which already contains
+            // `sym`. Reuse it, saving a memcpy.
+            if (i != 1) {
+                memcpy(child_sym, sym, parent_len);
+            }
+            
             size_t child_len = strlen((char*)p);
-            strncpy(&sym[parent_len], (char*)p, child_len);
-            sym[parent_len + child_len] = '\0';
+            memcpy(&child_sym[parent_len], (char*)p, child_len);
+            
+            size_t new_len = parent_len + child_len;
+            node_stack[stack_top].sym_len = new_len;
+            child_sym[new_len] = '\0';
+            
             p += child_len + 1;
             
-            const uint8_t *next_node = p;
-            uintptr_t nodeOffset = read_uleb128((void**)&next_node);
+            uintptr_t nodeOffset = read_uleb128((void**)&p);
             if (nodeOffset != 0) {
-                next_node = &start[nodeOffset];
-                node_stack[stack_top].node = next_node;
-            }
-            
-            ++stack_top;
-            
-            if (child_count) {
-                // Restore string buffer of parent node for sibling
-                strncpy(node_stack[stack_top].sym, sym, parent_len);
-                sym = node_stack[stack_top].sym;
-                
-                while ((*p & 0x80) != 0) {
-                    ++p;
-                }
-                ++p;
+                node_stack[stack_top].node = &start[nodeOffset];
             }
         }
+        // Restore stack_top
+        stack_top += child_count;
     }
 }
 
