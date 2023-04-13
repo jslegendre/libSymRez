@@ -8,7 +8,7 @@
 
 #import <XCTest/XCTest.h>
 #import <SymRez.h>
-extern void * _resolve_exported_symbol(symrez_t symrez, const char *symbol);
+extern void * resolve_exported_symbol(symrez_t symrez, const char *symbol);
 
 @interface PerformanceTests : XCTestCase
 
@@ -27,7 +27,7 @@ extern void * _resolve_exported_symbol(symrez_t symrez, const char *symbol);
 - (void)testPerformanceResolveExported {
     symrez_t sr = symrez_new("AppKit");
     [self measureBlock:^{
-        _resolve_exported_symbol(sr, "__nsBeginNSPSupport");
+        resolve_exported_symbol(sr, "__nsBeginNSPSupport");
     }];
 
     sr_free(sr);
