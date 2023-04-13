@@ -33,6 +33,11 @@
   #endif
 #endif
 
+#ifndef SR_INLINE
+#define SR_INLINE static inline __attribute__((always_inline))
+#endif
+
+
 extern const struct mach_header_64 _mh_execute_header;
 typedef struct load_command* load_command_t;
 typedef struct segment_command_64* segment_command_t;
@@ -87,86 +92,71 @@ SR_STATIC int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
     return 0;
 }
 
-
-SR_STATIC intptr_t read_uleb128(void** ptr) {
+SR_INLINE intptr_t read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
     int         bit = 0;
     do {
         uint64_t slice = *p & 0x7f;
-        
-        if (bit > 63) {
-            printf("uleb128 too big for uint64, bit=%d, result=0x%0llX\n", bit, result);
-        } else {
-            result |= (slice << bit);
-            bit += 7;
-        }
+        result |= (slice << bit);
+        bit += 7;
     } while (*p++ & 0x80);
     
     *ptr = p;
     return (uintptr_t)result;
 }
 
-SR_STATIC const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* s) {
+SR_STATIC const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
     const uint8_t* p = start;
     while (p != NULL) {
         uintptr_t terminalSize = *p++;
+        
         if ( terminalSize > 127 ) {
-            // except for re-export-with-rename, all terminal sizes fit in one byte
             --p;
             terminalSize = read_uleb128((void**)&p);
         }
-        if ((*s == '\0') && (terminalSize != 0)) {
+        
+        if ((*symbol == '\0') && (terminalSize != 0)) {
             return p;
         }
+        
         const uint8_t* children = p + terminalSize;
         if (children > end) {
-            
             return NULL;
         }
 
         uint8_t childrenRemaining = *children++;
         p = children;
         uintptr_t nodeOffset = 0;
+        
         for (; childrenRemaining > 0; --childrenRemaining) {
-            const char* ss = s;
+            const char* ss = symbol;
             bool wrongEdge = false;
- 
-            char c = *p;
+            const uint8_t *child = p;
+            
+            size_t child_len = strlen((char*)p);
+            char c = *child;
             while (c != '\0') {
-                if (!wrongEdge) {
-                    if ( c != *ss ) {
-                        wrongEdge = true;
-                    }
-                    ++ss;
+                if ((c ^ *ss++) > 0) {
+                    wrongEdge = true;
+                    break;
                 }
-                ++p;
-                c = *p;
+                ++child;
+                c = *child;
             }
             
+            p += child_len + 1;
+            nodeOffset = read_uleb128((void**)&p);
             if (wrongEdge) {
-                ++p;
-                while ((*p & 0x80) != 0) {
-                    ++p;
-                }
-                ++p;
-                if (p > end) {
-                    return NULL;
-                }
+                nodeOffset = 0;
             } else {
-                ++p;
-                nodeOffset = read_uleb128((void**)&p);
-                if ((nodeOffset == 0) || ( &start[nodeOffset] > end)) {
-                    return NULL;
-                }
-                s = ss;
+                p = &start[nodeOffset];
+                symbol = ss;
                 break;
             }
         }
-        if ( nodeOffset != 0 )
-            p = &start[nodeOffset];
-        else
-            p = NULL;
+        
+        if (!nodeOffset || p > end) break;
     }
     return NULL;
 }
@@ -369,17 +359,17 @@ SR_STATIC void * _resolve_local_symbol(symrez_t symrez, const char *symbol) {
     uintptr_t nl_addr = (uintptr_t)symtab;
     uint64_t i = 0;
     void *addr = NULL;
-    size_t sym_len = strlen(symbol);
+    size_t sym_len = strlen(symbol) + 1;
+    uint32_t sym_block = *(uint32_t*)symbol;
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-        if (nl->n_sect == 0) continue;
-        const char *str = (const char *)strtab + nl->n_un.n_strx;
-        if (strlen(str) != sym_len) {
-            continue;
-        }
+        if (nl->n_un.n_strx == 0) continue;
         
-        if (_strncmp_fast(str, symbol, strlen(symbol)) == 0) {
+        const char *str = (const char *)strtab + nl->n_un.n_strx;
+        if (*(uint32_t*)str ^ sym_block) continue;
+        
+        if (strncmp(str, symbol, sym_len) == 0) {
             uint64_t n_value = nl->n_value;
             if (n_value > 0) {
                 addr = (void *)(n_value + slide);
@@ -460,8 +450,8 @@ SR_STATIC void* _resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
     while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && !addr) {
         switch (lc->cmd) {
-            case LC_LOAD_DYLIB:
-            case LC_LOAD_WEAK_DYLIB:
+//            case LC_LOAD_DYLIB:
+//            case LC_LOAD_WEAK_DYLIB:
             case LC_REEXPORT_DYLIB:
             case LC_LOAD_UPWARD_DYLIB: {
                 const struct dylib_command *dylibCmd = (void*)lc;
