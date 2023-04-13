@@ -21,6 +21,18 @@
 #include <ptrauth.h>
 #endif
 
+#ifndef EXPORT_SYMBOL_FLAGS_WEAK_REEXPORT
+#define EXPORT_SYMBOL_FLAGS_WEAK_REEXPORT 0xC
+#endif
+
+#ifndef SR_STATIC
+  #ifdef DEBUG
+    #define SR_STATIC
+  #else
+    #define SR_STATIC static
+  #endif
+#endif
+
 extern const struct mach_header_64 _mh_execute_header;
 typedef struct load_command* load_command_t;
 typedef struct segment_command_64* segment_command_t;
@@ -31,7 +43,7 @@ typedef void* strtab_t;
 
 int symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 
-static dyld_all_image_infos_t _g_all_image_infos = NULL;
+SR_STATIC dyld_all_image_infos_t _g_all_image_infos = NULL;
 
 struct symrez {
     mach_header_t header;
@@ -43,7 +55,7 @@ struct symrez {
     uintptr_t exports_size;
 };
 
-static int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
+SR_STATIC int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
     size_t fast = len/sizeof(size_t) + 1;
     size_t offset = 0;
     int current_block = 0;
@@ -76,7 +88,7 @@ static int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
 }
 
 
-static intptr_t read_uleb128(void** ptr) {
+SR_STATIC intptr_t read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
     int         bit = 0;
@@ -95,7 +107,7 @@ static intptr_t read_uleb128(void** ptr) {
     return (uintptr_t)result;
 }
 
-static const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* s) {
+SR_STATIC const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* s) {
     const uint8_t* p = start;
     while (p != NULL) {
         uintptr_t terminalSize = *p++;
@@ -159,7 +171,7 @@ static const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end,
     return NULL;
 }
 
-static dyld_all_image_infos_t _get_all_image_infos(void) {
+SR_STATIC dyld_all_image_infos_t _get_all_image_infos(void) {
     if (!_g_all_image_infos) {
         task_dyld_info_data_t dyld_info;
         mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
@@ -174,7 +186,7 @@ static dyld_all_image_infos_t _get_all_image_infos(void) {
     return _g_all_image_infos;
 }
 
-static segment_command_t _find_segment_64(mach_header_t mh, const char *segname) {
+SR_STATIC segment_command_t _find_segment_64(mach_header_t mh, const char *segname) {
     load_command_t lc;
     segment_command_t seg, foundseg = NULL;
     
@@ -194,7 +206,7 @@ static segment_command_t _find_segment_64(mach_header_t mh, const char *segname)
     return foundseg;
 }
 
-static load_command_t _find_load_command(mach_header_t mh, uint32_t cmd) {
+SR_STATIC load_command_t _find_load_command(mach_header_t mh, uint32_t cmd) {
     load_command_t lc, foundlc = NULL;
     
     lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
@@ -210,8 +222,8 @@ static load_command_t _find_load_command(mach_header_t mh, uint32_t cmd) {
     return foundlc;
 }
 
-static const char * _dylib_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
-    char *dylib = NULL;
+SR_STATIC const char * dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
+    const char *dylib = NULL;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
     while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && ordinal > 0) {
         switch (lc->cmd) {
@@ -220,7 +232,7 @@ static const char * _dylib_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
             case LC_REEXPORT_DYLIB:
             case LC_LOAD_UPWARD_DYLIB: {
                 const struct dylib_command *dylibCmd = (void*)lc;
-                dylib = (char*)((void*)lc + dylibCmd->dylib.name.offset);
+                dylib = (const char*)((void*)lc + dylibCmd->dylib.name.offset);
                 --ordinal;
             }
         }
@@ -231,8 +243,7 @@ static const char * _dylib_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
     return dylib;
 }
 
-
-static intptr_t _compute_image_slide(mach_header_t mh) {
+SR_STATIC intptr_t _compute_image_slide(mach_header_t mh) {
     intptr_t res = 0;
     uint64_t mh_addr = (uint64_t)(void*)mh;
     segment_command_t seg = _find_segment_64(mh, SEG_TEXT);
@@ -240,7 +251,7 @@ static intptr_t _compute_image_slide(mach_header_t mh) {
     return res;
 }
 
-static int _find_linkedit_commands(symrez_t symrez) {
+SR_STATIC int _find_linkedit_commands(symrez_t symrez) {
     mach_header_t mh = symrez->header;
     intptr_t slide = symrez->slide;
     
@@ -255,20 +266,31 @@ static int _find_linkedit_commands(symrez_t symrez) {
         return 0;
     }
     
-    struct linkedit_data_command *exportInfo = (struct linkedit_data_command *)_find_load_command(mh, LC_DYLD_EXPORTS_TRIE);
-    if (exportInfo) {
-        symrez->exports = (void*)(linkedit->vmaddr - linkedit->fileoff) + exportInfo->dataoff + symrez->slide;
-        symrez->exports_size = exportInfo->datasize;
-    }
-    
     symrez->nsyms = symtab->nsyms;
     symrez->strtab = (strtab_t)(linkedit->vmaddr - linkedit->fileoff) + symtab->stroff + slide;
     symrez->symtab = (symtab_t)(linkedit->vmaddr - linkedit->fileoff) + symtab->symoff + slide;
     
+    struct linkedit_data_command *exportInfo = (struct linkedit_data_command *)_find_load_command(mh, LC_DYLD_EXPORTS_TRIE);
+    if (exportInfo) {
+        symrez->exports = (void*)(linkedit->vmaddr - linkedit->fileoff) + exportInfo->dataoff + symrez->slide;
+        symrez->exports_size = exportInfo->datasize;
+        return 1;
+    }
+    
+    struct dyld_info_command *dyld_info = (void*)_find_load_command(mh, LC_DYLD_INFO_ONLY);
+    if (!dyld_info) {
+        dyld_info = (void*)_find_load_command(mh, LC_DYLD_INFO);
+    }
+    
+    if (dyld_info) {
+        symrez->exports = (void*)(linkedit->vmaddr - linkedit->fileoff) + dyld_info->export_off + symrez->slide;
+        symrez->exports_size = dyld_info->export_size;
+    }
+    
     return 1;
 }
 
-int _find_image(const char *image_name, mach_header_t *hdr) {
+SR_STATIC int find_image(const char *image_name, mach_header_t *hdr) {
     int found = -1;
     *hdr = NULL;
     
@@ -340,7 +362,7 @@ mach_header_t _get_base_addr(void) {
     return (mach_header_t)address;
 }
 
-static void * _resolve_local_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void * _resolve_local_symbol(symrez_t symrez, const char *symbol) {
     strtab_t strtab = symrez->strtab;
     symtab_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
@@ -351,6 +373,7 @@ static void * _resolve_local_symbol(symrez_t symrez, const char *symbol) {
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+        if (nl->n_sect == 0) continue;
         const char *str = (const char *)strtab + nl->n_un.n_strx;
         if (strlen(str) != sym_len) {
             continue;
@@ -368,39 +391,70 @@ static void * _resolve_local_symbol(symrez_t symrez, const char *symbol) {
     return addr;
 }
 
-static void* _resolve_reexported_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void * _resolve_exported_symbol(symrez_t symrez, const char *symbol) {
     if (!symrez->exports_size) {
         return NULL;
     }
-    
+
     mach_header_t mh = symrez->header;
     void *exportTrie = symrez->exports;
     void *addr = NULL;
-    void *end = (void*)(exportTrie + symrez->exports_size);
+    void *end = (void*)((uintptr_t)exportTrie + symrez->exports_size);
     const uint8_t* node = walk_export_trie(exportTrie, end, symbol);
     if (node) {
         const uint8_t* p = node;
-        const uintptr_t flags = read_uleb128((void**)&p);
-        if ( flags & EXPORT_SYMBOL_FLAGS_REEXPORT ) {
+        uintptr_t flags = read_uleb128((void**)&p);
+        if ((flags & EXPORT_SYMBOL_FLAGS_REEXPORT) ||
+            (flags & EXPORT_SYMBOL_FLAGS_WEAK_REEXPORT)) {
             uintptr_t ordinal = read_uleb128((void**)&p);
-            const char *importedName = (char*)p;
-            const char *dylib = _dylib_for_ordinal(mh, ordinal);
+            const char* importedName = (char*)p;
+            if (!importedName || strlen(importedName) == 0) {
+                importedName = symbol;
+            }
+            const char *dylib = dylib_name_for_ordinal(mh, ordinal);
             
             if (!dylib) return NULL;
             
-            struct symrez sr = { 0 };
+            struct symrez sr;
             mach_header_t hdr = NULL;
-            if(!_find_image(dylib, &hdr)) return NULL;
+            if(!find_image(dylib, &hdr)) return NULL;
             if (!symrez_init_mh(&sr, hdr)) return NULL;
             
-            addr = sr_resolve_symbol(&sr, importedName);
+            return sr_resolve_symbol(&sr, importedName);
+        }
+        
+        switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
+            case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
+                if (flags & EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
+                    typedef uintptr_t (*ResolverProc)(void);
+                    ResolverProc resolver = (ResolverProc)(read_uleb128((void**)&p) + (uintptr_t)mh);
+                    #if __has_feature(ptrauth_calls)
+                    resolver = (ResolverProc)__builtin_ptrauth_sign_unauthenticated(resolver, ptrauth_key_asia, 0);
+                    #endif
+                    
+                    uintptr_t result = (*resolver)();
+                    #if __has_feature(ptrauth_calls)
+                    result = (uintptr_t)__builtin_ptrauth_strip((void*)result, ptrauth_key_asia);
+                    #endif
+                    return (void*)result;
+                }
+                
+                uintptr_t offset = read_uleb128((void**)&p);
+                addr = (void*)(offset + (uintptr_t)mh);
+                break;
+            }
+            case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE:
+                addr = (void*)read_uleb128((void**)&p);
+                break;
+            default:
+                break;
         }
     }
     
     return addr;
 }
 
-static void* _resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void* _resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
     void *addr = NULL;
     mach_header_t mh = symrez->header;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
@@ -418,9 +472,10 @@ static void* _resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
                 
                 struct symrez sr = { 0 };
                 mach_header_t hdr = NULL;
-                if(!_find_image(dylib, &hdr)) {
+                if(!find_image(dylib, &hdr)) {
                     goto next;
                 }
+                
                 if (!symrez_init_mh(&sr, hdr)) {
                     goto next;
                 }
@@ -447,7 +502,7 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol) {
     void *addr = _resolve_local_symbol(symrez, symbol);
     
     if (!addr) {
-        addr = _resolve_reexported_symbol(symrez, symbol);
+        addr = _resolve_exported_symbol(symrez, symbol);
     }
     
     if (!addr) {
@@ -466,7 +521,7 @@ void sr_free(symrez_t symrez) {
     free(symrez);
 }
 
-static void sr_for_each_in_trie_do_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
+SR_STATIC void sr_for_each_in_trie_do_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
     uintptr_t flags = read_uleb128((void**)&node);
     switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
         case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
@@ -507,7 +562,7 @@ The leaves of the tree represent complete symbols.
 Traverse the tree in iterative preorder, accumulating complete symbols by appending the
 suffix of the current node to the prefix of the parent node.
  */
-static void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
+SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
     void *export_trie = symrez->exports;
     const uint8_t *start = export_trie;
 
@@ -629,7 +684,7 @@ void * symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
 void * symrez_resolve_once(const char *image_name, const char *symbol) {
     mach_header_t hdr = NULL;
     
-    if(image_name != NULL && !_find_image(image_name, &hdr)) {
+    if(image_name != NULL && !find_image(image_name, &hdr)) {
         return NULL;
     }
     
@@ -680,7 +735,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
 symrez_t symrez_new(const char *image_name) {
     
     mach_header_t hdr = NULL;
-    if(image_name != NULL && !_find_image(image_name, &hdr)) {
+    if(image_name != NULL && !find_image(image_name, &hdr)) {
         return NULL;
     }
     
