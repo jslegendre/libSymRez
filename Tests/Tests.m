@@ -13,8 +13,8 @@
 #include <mach-o/dyld_images.h>
 #include <mach-o/ldsyms.h>
 
-extern mach_header_t _get_base_addr(void);
-extern int _find_image(const char *image_name, mach_header_t *hdr);
+extern mach_header_t get_base_addr(void);
+extern int find_image(const char *image_name, mach_header_t *hdr);
 
 @interface Tests : XCTestCase
 
@@ -32,7 +32,7 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
         }
     }
     
-    mach_header_t m2 = _get_base_addr();
+    mach_header_t m2 = get_base_addr();
     XCTAssertEqual(m1, m2);
 }
 
@@ -76,8 +76,8 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     symrez_t sr = symrez_new("CoreGraphics");
     void *sym = sr_resolve_symbol(sr, "_CGSClearWindowTags");
     sr_free(sr);
-    
-    XCTAssertTrue(sym);
+    void *sym2 = dlsym(RTLD_DEFAULT, "SLSClearWindowTags");
+    XCTAssertEqual(sym, sym2);
 }
 
 - (void)testResolveSymbolFromReExportedLibrary_strcmp {
@@ -111,11 +111,21 @@ extern int _find_image(const char *image_name, mach_header_t *hdr);
     XCTAssertTrue(_CFStringHash);
 }
 
+- (void)testResolveSymbol_private_objcDirect {
+    void *ojbc_direct_sym = symrez_resolve_once("Foundation", "-[NSXPCConnection _initWithPeerConnection:name:options:]");
+    XCTAssertTrue(ojbc_direct_sym);
+}
+
+- (void)testResolveSymbol_unexported1 {
+    void *_xpc_endpoint_create = symrez_resolve_once("libxpc.dylib", "__xpc_endpoint_create");
+    XCTAssertTrue(_xpc_endpoint_create);
+}
+
 - (void)testFindImage_name_path {
     mach_header_t hdr1 = NULL;
     mach_header_t hdr2 = NULL;
-    _find_image("/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation", &hdr1);
-    _find_image("Foundation", &hdr2);
+    find_image("/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation", &hdr1);
+    find_image("Foundation", &hdr2);
     
     XCTAssertEqual(hdr1, hdr2);
 }

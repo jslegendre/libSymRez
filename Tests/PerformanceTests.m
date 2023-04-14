@@ -8,29 +8,29 @@
 
 #import <XCTest/XCTest.h>
 #import <SymRez.h>
-extern void * resolve_exported_symbol(symrez_t symrez, const char *symbol);
+#import <mach/task.h>
+#import <mach-o/dyld_images.h>
 
+extern void * resolve_exported_symbol(symrez_t symrez, const char *symbol);
+extern int find_image(const char *image_name, mach_header_t *hdr);
 @interface PerformanceTests : XCTestCase
 
 @end
 
-@implementation PerformanceTests
+@implementation PerformanceTests {
+    struct dyld_all_image_infos *aii;
+}
 
 - (void)setUp {
-    // Put setup code here. This method is called before the invocation of each test method in the class.
+    task_dyld_info_data_t dyld_info;
+    mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
+    kern_return_t kr = task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyld_info, &count);
+    
+    aii = (void*)(dyld_info.all_image_info_addr);
 }
 
 - (void)tearDown {
     // Put teardown code here. This method is called after the invocation of each test method in the class.
-}
-
-- (void)testPerformanceResolveExported {
-    symrez_t sr = symrez_new("AppKit");
-    [self measureBlock:^{
-        resolve_exported_symbol(sr, "__nsBeginNSPSupport");
-    }];
-
-    sr_free(sr);
 }
 
 - (void)testPerformanceResolveSymbol {
@@ -51,6 +51,38 @@ extern void * resolve_exported_symbol(symrez_t symrez, const char *symbol);
     sr_free(sr);
 }
 
+- (void)testPerformanceResolveExported {
+    symrez_t sr = symrez_new("AppKit");
+    [self measureBlock:^{
+        resolve_exported_symbol(sr, "__nsBeginNSPSupport");
+    }];
 
+    sr_free(sr);
+}
+
+- (void)testPerformanceFindImageByName {
+    const struct dyld_image_info *info_array = aii->infoArray;
+    const char *p = info_array[(aii->infoArrayCount - 1)].imageFilePath;
+    p = strrchr(p, '/');
+    ++p;
+    [self measureBlock:^{
+        mach_header_t mh = NULL;
+        find_image(p, (mach_header_t*)&mh);
+        XCTAssertTrue(mh);
+    }];
+}
+
+
+- (void)testPerformanceFindImageByPath {
+    const struct dyld_image_info *info_array = aii->infoArray;
+    const char *p = info_array[(aii->infoArrayCount - 1)].imageFilePath;
+    [self measureBlock:^{
+        mach_header_t mh = NULL;
+        find_image(p, (mach_header_t*)&mh);
+        XCTAssertTrue(mh);
+    }];
+    
+    
+}
 
 @end

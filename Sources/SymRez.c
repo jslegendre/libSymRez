@@ -281,54 +281,45 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     return 1;
 }
 
-SR_STATIC int find_image(const char *image_name, mach_header_t *hdr) {
-    int found = -1;
+SR_INLINE int find_image_by_name(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
+    uint32_t block = *(uint32_t*)image_name;
     
     dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
     const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
     for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
         const char *p = info_array[i].imageFilePath;
-        if (_strncmp_fast(p, image_name, strlen(p)) == 0) {
-            found = i;
-            break;
-        }
+        const char *img = strrchr(p, '/');
+        ++img;
         
-        char *img = strrchr(p, '/');
-        img = (char *)&img[1];
-        if(_strncmp_fast(img, image_name, strlen(img)) == 0) {
-            found = i;
-            break;
+        if (block ^ *(uint32_t*)img) continue;
+        if(strcmp(img, image_name) == 0) {
+            *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
+            return i;
         }
     }
     
-    if (found >= 0) {
-        *hdr = (mach_header_t)(info_array[found].imageLoadAddress);
-        return 1;
+    return -1;
+}
+
+SR_STATIC int find_image(const char *image_name, mach_header_t *hdr) {
+    *hdr = NULL;
+    if (*image_name ^ '/') {
+        return find_image_by_name(image_name, hdr);
     }
-    
-//    uint32_t imagecount = _dyld_image_count();
-//    for(int i = 0; i < imagecount; i++) {
-//        const char *p = _dyld_get_image_name(i);
-//        if (_strncmp_fast(p, image_name, strlen(p)) == 0) {
-//            found = i;
-//            break;
-//        }
-//
-//        char *img = strrchr(p, '/');
-//        img = (char *)&img[1];
-//        if(strcmp(img, image_name) == 0) {
-//            *hdr = (const struct mach_header_64 *)_dyld_get_image_header(i);
-//            return 1;
-//        }
-//    }
-//
-//    if (found >= 0) {
-//        *hdr = (mach_header_t)_dyld_get_image_header(found);
-//        return 1;
-//    }
-    
-    return 0;
+
+    size_t name_len = strlen(image_name);
+    dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
+    const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
+    for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
+        const char *p = info_array[i].imageFilePath;
+        if (_strncmp_fast(p, image_name, name_len) == 0) {
+            *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 mach_header_t get_base_addr(void) {
