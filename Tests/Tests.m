@@ -130,4 +130,9 @@ extern int find_image(const char *image_name, mach_header_t *hdr);
     XCTAssertEqual(hdr1, hdr2);
 }
 
+- (void)testFindImage_not_loaded {
+    symrez_t sr = symrez_new("AAAAAAAAAAAA");
+    XCTAssertEqual(sr, NULL);
+}
+
 @end

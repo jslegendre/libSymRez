@@ -302,7 +302,11 @@ SR_INLINE int find_image_by_name(const char *image_name, mach_header_t *hdr) {
     return -1;
 }
 
-SR_STATIC int find_image(const char *image_name, mach_header_t *hdr) {
+
+// If the image is found, place result in *hdr and return index of image.
+// return -1 otherwise.
+SR_STATIC
+int find_image(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
     if (*image_name ^ '/') {
         return find_image_by_name(image_name, hdr);
@@ -721,7 +725,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
 symrez_t symrez_new(const char *image_name) {
     
     mach_header_t hdr = NULL;
-    if(image_name != NULL && !find_image(image_name, &hdr)) {
+    if(image_name != NULL && (find_image(image_name, &hdr) < 0)) {
         return NULL;
     }
     
