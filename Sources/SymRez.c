@@ -344,24 +344,26 @@ mach_header_t get_base_addr(void) {
     return (mach_header_t)address;
 }
 
-SR_STATIC void sr_for_each_in_trie_do_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
+SR_INLINE
+bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
+    uintptr_t addr = 0;
     uintptr_t flags = read_uleb128((void**)&node);
     switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
         case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
-            uintptr_t addr = read_uleb128((void**)&node);
-            if (work(sym, (void*)addr)) return;
+            addr = read_uleb128((void**)&node);
             break;
         }
         case EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION:
         case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
             uintptr_t offset = read_uleb128((void**)&node);
-            uintptr_t addr = (uintptr_t)(symrez->header) + offset;
-            if (work(sym, (void*)addr)) return;
+            addr = (uintptr_t)(symrez->header) + offset;
             break;
         }
         default:
             break;
     }
+    
+    return work(sym, (void*)addr);
 }
 
 /*
@@ -406,19 +408,21 @@ SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
         
         const uint8_t *p = node;
         uintptr_t terminal_size = *p++;
-        if ( terminal_size > 127 ) {
+        if (terminal_size > 127) {
             --p;
             terminal_size = read_uleb128((void**)&p);
         }
 
         const uint8_t* children = p + terminal_size;
-        uint8_t child_count = *children++;
+        uint8_t child_count = *children;
         if (child_count == 0) { // Handle leaf node
-            sr_for_each_in_trie_do_callback(symrez, ++node, sym, work);
+            if (sr_for_each_trie_callback(symrez, ++node, sym, work)) {
+                return;
+            }
             continue;
         }
 
-        p = children;
+        ++p;
         size_t parent_len = sym_len;
         
         // First child needs to be first to get popped so
