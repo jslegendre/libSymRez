@@ -52,6 +52,19 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol);
     @discussion String passed to 'callback' may be ephemeral . */
 void sr_for_each(symrez_t symrez, void *context, symrez_function_t callback);
 
+/*! @function sr_set_slide
+    @abstract Set custom slide value
+    @param symrez symrez object created by symrez_new
+    @param slide new slide value
+    @discussion Useful for static analysis tools. i.e. disassemblers. */
+void sr_set_slide(symrez_t symrez, intptr_t slide);
+
+/*! @function sr_get_slide
+    @abstract Get mach-o image slide
+    @param symrez symrez object created by symrez_new
+    @return slide value  */
+intptr_t sr_get_slide(symrez_t symrez);
+
 /*! @function sr_free
     @abstract Release all resources allocated for this symrez object */
 void sr_free(symrez_t);

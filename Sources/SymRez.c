@@ -643,6 +643,14 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol) {
     return addr;
 }
 
+void sr_set_slide(symrez_t symrez, intptr_t slide) {
+    symrez->slide = slide;
+}
+
+intptr_t sr_get_slide(symrez_t symrez) {
+    return symrez->slide;
+}
+
 void sr_free(symrez_t symrez) {
     free(symrez);
 }
