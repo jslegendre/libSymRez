@@ -37,6 +37,9 @@
 #define SR_INLINE static inline __attribute__((always_inline))
 #endif
 
+#ifndef SR_ITER_STACK_DEPTH
+#define SR_ITER_STACK_DEPTH 0x48
+#endif
 
 extern const struct mach_header_64 _mh_execute_header;
 typedef struct load_command* load_command_t;
@@ -58,6 +61,21 @@ struct symrez {
     uint32_t nsyms;
     void *exports;
     uintptr_t exports_size;
+    sr_iterator_t iterator;
+};
+
+// Should node_stack be a dynamic array?
+struct sr_iterator {
+    symrez_t symrez;
+    uint32_t nlist_idx;
+    int32_t stack_top;
+    struct stack_node {
+        const uint8_t* node;
+        char sym[2048];
+        size_t sym_len;
+    } node_stack[SR_ITER_STACK_DEPTH];
+    void *addr;
+    char *symbol;
 };
 
 SR_STATIC int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
@@ -346,6 +364,173 @@ mach_header_t get_base_addr(void) {
     }
     
     return (mach_header_t)address;
+}
+
+sr_iterator_t sr_iterator_create(symrez_t symrez) {
+    sr_iterator_t iterator = calloc(1, sizeof(struct sr_iterator));
+    iterator->symrez = symrez;
+    iterator->nlist_idx = 0;
+    iterator->stack_top = 1;
+    iterator->node_stack[0].node = symrez->exports;
+    iterator->node_stack[0].sym_len = 0;
+    iterator->addr = NULL;
+    iterator->symbol = NULL;
+    return iterator;
+}
+
+void * sr_iterator_get_ptr(sr_iterator_t iter) {
+    return iter->addr;
+}
+
+char * sr_iterator_get_symbol(sr_iterator_t iter) {
+    return iter->symbol;
+}
+
+size_t sr_iterator_copy_symbol(sr_iterator_t iter, char *dest) {
+    if (!iter->symbol) return 0;
+    size_t ret = strlen(iter->symbol);
+    
+    if (dest) {
+        strncpy(dest, iter->symbol, ret);
+    }
+    
+    return ret;
+}
+
+char * sr_iterator_get_next(sr_iterator_t it) {
+    symrez_t sr = it->symrez;
+    it->addr = NULL;
+    it->symbol = NULL;
+    
+    if (it->nlist_idx < sr->nsyms) {
+        strtab_t strtab = sr->strtab;
+        symtab_t symtab = sr->symtab;
+        intptr_t slide = sr->slide;
+        int i = it->nlist_idx;
+        uint64_t nl_addr = (uintptr_t)sr->symtab + (i *sizeof(struct nlist_64));
+        
+        for (; it->nlist_idx < sr->nsyms; it->nlist_idx++, nl_addr += sizeof(struct nlist_64)) {
+            
+            struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+            if (nl->n_un.n_strx == 0) continue;
+            if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && sr->exports)) {
+                continue;
+            }
+
+            char *str = (char *)strtab + nl->n_un.n_strx;
+            it->nlist_idx += 1;
+            it->symbol = str;
+            it->addr = (void *)(nl->n_value + slide);
+            return str;
+        }
+    }
+
+    
+    if (it->stack_top == 0) {
+        return NULL;
+    }
+    
+    if (it->stack_top >= SR_ITER_STACK_DEPTH) {
+        #ifdef DEBUG
+        // Bump SR_ITER_STACK_DEPTH
+        abort();
+        #endif
+        return NULL;
+    }
+    
+    while (it->stack_top > 0) {
+        const uint8_t* node = it->node_stack[--it->stack_top].node;
+        if (!node) {
+            return NULL;
+        }
+        char* sym = it->node_stack[it->stack_top].sym;
+        size_t sym_len = it->node_stack[it->stack_top].sym_len;
+        
+        const uint8_t *p = node;
+        uintptr_t terminal_size = *p++;
+        if (terminal_size > 127) {
+            --p;
+            terminal_size = read_uleb128((void**)&p);
+        }
+        
+        const uint8_t* children = p + terminal_size;
+        uint8_t child_count = *children++;
+        if (child_count == 0) { // Handle leaf node
+            uintptr_t addr = 0;
+            ++node;
+            uintptr_t flags = read_uleb128((void**)&node);
+            switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
+                case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
+                    addr = read_uleb128((void**)&node);
+                    break;
+                }
+                case EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION:
+                case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
+                    uintptr_t offset = read_uleb128((void**)&node);
+                    addr = (uintptr_t)(sr->header) + offset;
+                    break;
+                }
+                default:
+                    break;
+            }
+            
+            it->symbol = sym;
+            it->addr = (void *)addr;
+            return sym;
+        }
+        
+        p = children;
+        size_t parent_len = sym_len;
+        
+        // First child needs to be first to get popped so
+        // increment stack_top by child_count and iterate
+        // over children first to last. Decrement stack_top
+        // each time to place siblings from top to bottom,
+        // maintaining preorder.
+        // The current node is popped and will be replaced
+        // by the last child.
+        it->stack_top += child_count;
+        for (int i = child_count; i > 0; --i) {
+            char *child_sym = it->node_stack[--it->stack_top].sym;
+            
+            // At child_count, stack will be at original
+            // (parent) stack_node, which already contains
+            // `sym`. Reuse it, saving a memcpy.
+            if (i != 1) {
+                memcpy(child_sym, sym, parent_len);
+            }
+            
+            size_t child_len = strlen((char*)p);
+            size_t new_len = parent_len + child_len;
+            memcpy(&child_sym[parent_len], (char*)p, child_len);
+            
+            it->node_stack[it->stack_top].sym_len = new_len;
+            child_sym[new_len] = '\0';
+            
+            p += child_len+1;
+            
+            uintptr_t nodeOffset = read_uleb128((void**)&p);
+            if (nodeOffset != 0) {
+                void *export_trie = it->symrez->exports;
+                const uint8_t *start = export_trie;
+                it->node_stack[it->stack_top].node = &start[nodeOffset];
+            }
+        }
+        it->stack_top += child_count;
+    }
+    return NULL; // No more nodes
+}
+
+void sr_iterator_free(sr_iterator_t iterator) {
+    free(iterator);
+}
+
+sr_iterator_t sr_get_iterator(symrez_t symrez) {
+    if (!symrez->iterator) {
+        symrez->iterator = sr_iterator_create(symrez);
+    }
+    
+    return symrez->iterator;
 }
 
 SR_INLINE
@@ -652,6 +837,10 @@ intptr_t sr_get_slide(symrez_t symrez) {
 }
 
 void sr_free(symrez_t symrez) {
+    if (symrez->iterator) {
+        sr_iterator_free(symrez->iterator);
+    }
+    
     free(symrez);
 }
 
@@ -697,7 +886,7 @@ int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     symrez->strtab = NULL;
     symrez->exports = NULL;
     symrez->exports_size = 0;
-    
+    symrez->iterator = NULL;
     mach_header_t hdr = mach_header;
     if (hdr == NULL) {
         hdr = get_base_addr();

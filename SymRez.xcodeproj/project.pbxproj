@@ -12,6 +12,7 @@
 		0986822327719CC100E01D0D /* Tests.m in Sources */ = {isa = PBXBuildFile; fileRef = 0986822227719CC100E01D0D /* Tests.m */; };
 		0986822427719CC100E01D0D /* libSymRez.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0980EE282446A37A00F28911 /* libSymRez.dylib */; };
 		0986822A27719DD600E01D0D /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
+		3F4D81C229E79DAF0064FEE4 /* PerformanceTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +32,7 @@
 		0980EE302446A5B500F28911 /* SymRez.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = SymRez.c; path = Sources/SymRez.c; sourceTree = "<group>"; };
 		0986822027719CC100E01D0D /* Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0986822227719CC100E01D0D /* Tests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests.m; sourceTree = "<group>"; };
+		3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PerformanceTests.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +77,7 @@
 		0986822127719CC100E01D0D /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */,
 				0986822227719CC100E01D0D /* Tests.m */,
 			);
 			path = Tests;
@@ -189,6 +192,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0986822327719CC100E01D0D /* Tests.m in Sources */,
+				3F4D81C229E79DAF0064FEE4 /* PerformanceTests.m in Sources */,
 				0986822A27719DD600E01D0D /* SymRez.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
