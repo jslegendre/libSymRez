@@ -23,7 +23,7 @@ typedef const struct mach_header_64 mach_header;
 typedef const struct mach_header_64* mach_header_t;
 
 // return true to stop loop
-typedef bool (*symrez_function_t)(char *symbol, void *ptr);
+typedef bool (*symrez_function_t)(char *symbol, void *ptr, void *context);
 
 typedef struct symrez* symrez_t;
 
@@ -47,9 +47,10 @@ void * sr_resolve_symbol(symrez_t symrez, const char *symbol);
 /*! @function sr_for_each
     @abstract Loop through all symbols with a callback
     @param symrez symrez object created by symrez_new
+    @param context user context for callback
     @param callback callback for processing each iteration. Return true to stop loop.
     @discussion String passed to 'callback' may be ephemeral . */
-void sr_for_each(symrez_t symrez, symrez_function_t callback);
+void sr_for_each(symrez_t symrez, void *context, symrez_function_t callback);
 
 /*! @function sr_free
     @abstract Release all resources allocated for this symrez object */

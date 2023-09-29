@@ -349,7 +349,7 @@ mach_header_t get_base_addr(void) {
 }
 
 SR_INLINE
-bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work) {
+bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work, void *context) {
     uintptr_t addr = 0;
     uintptr_t flags = read_uleb128((void**)&node);
     switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
@@ -367,7 +367,7 @@ bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, 
             break;
     }
     
-    return work(sym, (void*)addr);
+    return work(sym, context, (void*)addr);
 }
 
 /*
@@ -391,7 +391,7 @@ The leaves of the tree represent complete symbols.
 Traverse the tree in iterative preorder, accumulating complete symbols by appending the
 suffix of the current node to the prefix of the parent node.
  */
-SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
+SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work, void *context) {
     void *export_trie = symrez->exports;
     const uint8_t *start = export_trie;
 
@@ -418,15 +418,15 @@ SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
         }
 
         const uint8_t* children = p + terminal_size;
-        uint8_t child_count = *children;
+        uint8_t child_count = *children++;
         if (child_count == 0) { // Handle leaf node
-            if (sr_for_each_trie_callback(symrez, ++node, sym, work)) {
+            if (sr_for_each_trie_callback(symrez, ++node, sym, work, context)) {
                 return;
             }
             continue;
         }
 
-        ++p;
+        p = children;
         size_t parent_len = sym_len;
         
         // First child needs to be first to get popped so
@@ -437,7 +437,7 @@ SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
         // The current node is popped and will be replaced
         // by the last child.
         stack_top += child_count;
-        for (int i = child_count; i > 0; --i) {
+        for (int i = child_count; i > 0; i--) {
             char *child_sym = node_stack[--stack_top].sym;
             
             // At child_count, stack will be at original
@@ -466,7 +466,7 @@ SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work) {
     }
 }
 
-void sr_for_each(symrez_t symrez, symrez_function_t work) {
+void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
     strtab_t strtab = symrez->strtab;
     symtab_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
@@ -479,13 +479,13 @@ void sr_for_each(symrez_t symrez, symrez_function_t work) {
         if ((nl->n_type & N_STAB) || nl->n_sect == 0) continue; // External symbol
         char *str = (char *)strtab + nl->n_un.n_strx;
         addr = (void *)(nl->n_value + slide);
-        if (work(str, addr)) {
+        if (work(str, addr, context)) {
             break;
         }
     }
     
     if (symrez->exports_size)
-        sr_for_each_in_trie(symrez, work);
+        sr_for_each_in_trie(symrez, work, context);
 }
 
 SR_STATIC void * resolve_local_symbol(symrez_t symrez, const char *symbol) {
