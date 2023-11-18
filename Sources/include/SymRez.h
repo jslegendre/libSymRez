@@ -13,14 +13,12 @@
 extern "C" {
 #endif
 
-
 #include <stdio.h>
 #include <stdbool.h>
 
-#define SR_DYLD_HDR ((void *) -1)
-
-typedef const struct mach_header_64 mach_header;
 typedef const struct mach_header_64* mach_header_t;
+
+#define SR_DYLD_HDR ((mach_header_t)(void *) -1)
 
 // return true to stop loop
 typedef bool (*symrez_function_t)(char *symbol, void *ptr, void *context);
