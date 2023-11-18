@@ -64,6 +64,11 @@ struct symrez {
     sr_iterator_t iterator;
 };
 
+struct sr_iter_result {
+    sr_ptr_t ptr;
+    sr_symbol_t symbol;
+};
+
 // Should node_stack be a dynamic array?
 struct sr_iterator {
     symrez_t symrez;
@@ -74,8 +79,7 @@ struct sr_iterator {
         char sym[2048];
         size_t sym_len;
     } node_stack[SR_ITER_STACK_DEPTH];
-    void *addr;
-    char *symbol;
+    struct sr_iter_result result;
 };
 
 SR_STATIC int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
@@ -373,34 +377,34 @@ sr_iterator_t sr_iterator_create(symrez_t symrez) {
     iterator->stack_top = 1;
     iterator->node_stack[0].node = symrez->exports;
     iterator->node_stack[0].sym_len = 0;
-    iterator->addr = NULL;
-    iterator->symbol = NULL;
+    iterator->result.ptr = NULL;
+    iterator->result.symbol = NULL;
     return iterator;
 }
 
-void * sr_iterator_get_ptr(sr_iterator_t iter) {
-    return iter->addr;
+sr_ptr_t sr_iter_get_ptr(sr_iterator_t iter) {
+    return iter->result.ptr;
 }
 
-char * sr_iterator_get_symbol(sr_iterator_t iter) {
-    return iter->symbol;
+sr_symbol_t sr_iter_get_symbol(sr_iterator_t iter) {
+    return iter->result.symbol;
 }
 
-size_t sr_iterator_copy_symbol(sr_iterator_t iter, char *dest) {
-    if (!iter->symbol) return 0;
-    size_t ret = strlen(iter->symbol);
+size_t sr_iter_copy_symbol(sr_iterator_t iter, char *dest) {
+    if (!iter->result.symbol) return 0;
+    size_t ret = strlen(iter->result.symbol);
     
     if (dest) {
-        strncpy(dest, iter->symbol, ret);
+        strncpy(dest, iter->result.symbol, ret);
     }
     
     return ret;
 }
 
-char * sr_iterator_get_next(sr_iterator_t it) {
+sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
     symrez_t sr = it->symrez;
-    it->addr = NULL;
-    it->symbol = NULL;
+    it->result.ptr = NULL;
+    it->result.symbol = NULL;
     
     if (it->nlist_idx < sr->nsyms) {
         strtab_t strtab = sr->strtab;
@@ -419,9 +423,9 @@ char * sr_iterator_get_next(sr_iterator_t it) {
 
             char *str = (char *)strtab + nl->n_un.n_strx;
             it->nlist_idx += 1;
-            it->symbol = str;
-            it->addr = (void *)(nl->n_value + slide);
-            return str;
+            it->result.symbol = str;
+            it->result.ptr = (void *)(nl->n_value + slide);
+            return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
         }
     }
 
@@ -474,9 +478,9 @@ char * sr_iterator_get_next(sr_iterator_t it) {
                     break;
             }
             
-            it->symbol = sym;
-            it->addr = (void *)addr;
-            return sym;
+            it->result.symbol = sym;
+            it->result.ptr = (void *)addr;
+            return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
         }
         
         p = children;
@@ -673,7 +677,7 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
         sr_for_each_in_trie(symrez, work, context);
 }
 
-SR_STATIC void * resolve_local_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     strtab_t strtab = symrez->strtab;
     symtab_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
@@ -702,7 +706,7 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, const char *symbol) {
     return addr;
 }
 
-SR_STATIC void * resolve_exported_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
     if (!symrez->exports_size) {
         return NULL;
     }
@@ -718,7 +722,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, const char *symbol) {
         if ((flags & EXPORT_SYMBOL_FLAGS_REEXPORT) ||
             (flags & EXPORT_SYMBOL_FLAGS_WEAK_REEXPORT)) {
             uintptr_t ordinal = read_uleb128((void**)&p);
-            const char* importedName = (char*)p;
+            char* importedName = (char*)p;
             if (!importedName || strlen(importedName) == 0) {
                 importedName = symbol;
             }
@@ -765,7 +769,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, const char *symbol) {
     return addr;
 }
 
-SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
+SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
     void *addr = NULL;
     mach_header_t mh = symrez->header;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
@@ -809,7 +813,7 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
     return NULL;
 }
 
-void * sr_resolve_symbol(symrez_t symrez, const char *symbol) {
+sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol) {
     void *addr = resolve_local_symbol(symrez, symbol);
     
     if (!addr) {
@@ -844,7 +848,7 @@ void sr_free(symrez_t symrez) {
     free(symrez);
 }
 
-void * symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
+sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
     mach_header_t hdr = header;
     if (!hdr) {
         hdr = get_base_addr();
@@ -868,7 +872,7 @@ void * symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
     return sr_resolve_symbol(&sr, symbol);
 }
 
-void * symrez_resolve_once(const char *image_name, const char *symbol) {
+sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
     mach_header_t hdr = NULL;
     
     if(image_name != NULL && !find_image(image_name, &hdr)) {
@@ -888,8 +892,11 @@ int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     symrez->exports_size = 0;
     symrez->iterator = NULL;
     mach_header_t hdr = mach_header;
-    if (hdr == NULL) {
+    if (hdr == SR_EXEC_HDR) {
         hdr = get_base_addr();
+    } else if (hdr == SR_DYLD_HDR) {
+        dyld_all_image_infos_t aii = get_all_image_infos();
+        hdr = (mach_header_t)(aii->dyldImageLoadAddress);
     }
     
     intptr_t slide = compute_image_slide(hdr);
@@ -919,7 +926,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
     return symrez;
 }
 
-symrez_t symrez_new(const char *image_name) {
+symrez_t symrez_new(char *image_name) {
     
     mach_header_t hdr = NULL;
     if(image_name != NULL && (find_image(image_name, &hdr) < 0)) {
