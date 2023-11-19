@@ -17,7 +17,11 @@ let package = Package(
         .target(
             name: "SymRez",
             dependencies: [],
-            path: "Sources"),
+            path: "Sources",
+            cSettings: [
+                .unsafeFlags(["-momit-leaf-frame-pointer", "-fno-modules"])
+            ]
+        ),
         .testTarget(
             name: "SymRezTests",
             dependencies: ["SymRez"],

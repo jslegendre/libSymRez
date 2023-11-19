@@ -82,7 +82,8 @@ struct sr_iterator {
     struct sr_iter_result result;
 };
 
-SR_STATIC int _strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
+SR_STATIC int __attribute__((const))
+_strncmp_fast(const char *ptr0, const char *ptr1, size_t len) {
     size_t fast = len/sizeof(size_t) + 1;
     size_t offset = 0;
     int current_block = 0;
@@ -129,7 +130,8 @@ SR_INLINE intptr_t read_uleb128(void** ptr) {
     return (uintptr_t)result;
 }
 
-SR_STATIC const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
+SR_STATIC const uint8_t* 
+walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
     const uint8_t* p = start;
     while (p != NULL) {
         uintptr_t terminal_size = *p++;
@@ -184,7 +186,8 @@ SR_STATIC const uint8_t* walk_export_trie(const uint8_t* start, const uint8_t* e
     return NULL;
 }
 
-SR_STATIC dyld_all_image_infos_t get_all_image_infos(void) {
+SR_STATIC dyld_all_image_infos_t
+get_all_image_infos(void) {
     if (!_g_all_image_infos) {
         task_dyld_info_data_t dyld_info;
         mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
@@ -199,7 +202,8 @@ SR_STATIC dyld_all_image_infos_t get_all_image_infos(void) {
     return _g_all_image_infos;
 }
 
-SR_STATIC segment_command_t find_lc_segment(mach_header_t mh, const char *segname) {
+SR_STATIC segment_command_t __attribute__((const))
+find_lc_segment(mach_header_t mh, const char *segname) {
     load_command_t lc;
     segment_command_t seg, foundseg = NULL;
     
@@ -219,7 +223,8 @@ SR_STATIC segment_command_t find_lc_segment(mach_header_t mh, const char *segnam
     return foundseg;
 }
 
-SR_STATIC load_command_t find_load_command(mach_header_t mh, uint32_t cmd) {
+SR_STATIC load_command_t __attribute__((const))
+find_load_command(mach_header_t mh, uint32_t cmd) {
     load_command_t lc, foundlc = NULL;
     
     lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
@@ -235,7 +240,8 @@ SR_STATIC load_command_t find_load_command(mach_header_t mh, uint32_t cmd) {
     return foundlc;
 }
 
-SR_STATIC const char * dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
+SR_STATIC const char * __attribute__((const))
+dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
     const char *dylib = NULL;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
     while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && ordinal > 0) {
@@ -256,7 +262,8 @@ SR_STATIC const char * dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordina
     return dylib;
 }
 
-SR_STATIC intptr_t compute_image_slide(mach_header_t mh) {
+SR_INLINE intptr_t __attribute__((const))
+compute_image_slide(mach_header_t mh) {
     intptr_t res = 0;
     uint64_t mh_addr = (uint64_t)(void*)mh;
     segment_command_t seg = find_lc_segment(mh, SEG_TEXT);
@@ -303,7 +310,8 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     return 1;
 }
 
-SR_INLINE int find_image_by_name(const char *image_name, mach_header_t *hdr) {
+SR_STATIC int 
+find_image_by_name(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
     uint32_t block = *(uint32_t*)image_name;
     
@@ -327,8 +335,8 @@ SR_INLINE int find_image_by_name(const char *image_name, mach_header_t *hdr) {
 
 // If the image is found, place result in *hdr and return index of image.
 // return -1 otherwise.
-SR_STATIC
-int find_image(const char *image_name, mach_header_t *hdr) {
+SR_STATIC int __attribute__((const))
+find_image(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
     if (*image_name ^ '/') {
         return find_image_by_name(image_name, hdr);
@@ -850,11 +858,9 @@ void sr_free(symrez_t symrez) {
 
 sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
     mach_header_t hdr = header;
-    if (!hdr) {
+    if (hdr == SR_EXEC_HDR) {
         hdr = get_base_addr();
-    }
-    
-    if (header == SR_DYLD_HDR) {
+    } else if (header == SR_DYLD_HDR) {
         dyld_all_image_infos_t aii = get_all_image_infos();
         hdr = (mach_header_t)(aii->dyldImageLoadAddress);
     }
@@ -875,7 +881,7 @@ sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
 sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
     mach_header_t hdr = NULL;
     
-    if(image_name != NULL && !find_image(image_name, &hdr)) {
+    if(!find_image(image_name, &hdr)) {
         return NULL;
     }
     
@@ -929,7 +935,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
 symrez_t symrez_new(char *image_name) {
     
     mach_header_t hdr = NULL;
-    if(image_name != NULL && (find_image(image_name, &hdr) < 0)) {
+    if(find_image(image_name, &hdr) < 0) {
         return NULL;
     }
     
