@@ -310,7 +310,7 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     return 1;
 }
 
-SR_STATIC int 
+SR_INLINE bool __attribute__((const))
 find_image_by_name(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
     uint32_t block = *(uint32_t*)image_name;
@@ -325,17 +325,14 @@ find_image_by_name(const char *image_name, mach_header_t *hdr) {
         if (block ^ *(uint32_t*)img) continue;
         if(strcmp(img, image_name) == 0) {
             *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
-            return i;
+            return true;
         }
     }
     
-    return -1;
+    return false;
 }
 
-
-// If the image is found, place result in *hdr and return index of image.
-// return -1 otherwise.
-SR_STATIC int __attribute__((const))
+SR_STATIC bool __attribute__((const))
 find_image(const char *image_name, mach_header_t *hdr) {
     *hdr = NULL;
     if (*image_name ^ '/') {
@@ -349,11 +346,11 @@ find_image(const char *image_name, mach_header_t *hdr) {
         const char *p = info_array[i].imageFilePath;
         if (_strncmp_fast(p, image_name, name_len) == 0) {
             *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
-            return i;
+            return true;
         }
     }
 
-    return -1;
+    return false;
 }
 
 mach_header_t get_base_addr(void) {
@@ -935,7 +932,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
 symrez_t symrez_new(char *image_name) {
     
     mach_header_t hdr = NULL;
-    if(find_image(image_name, &hdr) < 0) {
+    if(!find_image(image_name, &hdr)) {
         return NULL;
     }
     
