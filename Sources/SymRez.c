@@ -49,7 +49,7 @@ typedef struct nlist_64 nlist_64;
 typedef void* symtab_t;
 typedef void* strtab_t;
 
-int symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
+SR_STATIC int symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 
 SR_STATIC dyld_all_image_infos_t _g_all_image_infos = NULL;
 
@@ -416,7 +416,7 @@ sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
         symtab_t symtab = sr->symtab;
         intptr_t slide = sr->slide;
         int i = it->nlist_idx;
-        uint64_t nl_addr = (uintptr_t)sr->symtab + (i *sizeof(struct nlist_64));
+        uint64_t nl_addr = (uintptr_t)symtab + (i *sizeof(struct nlist_64));
         
         for (; it->nlist_idx < sr->nsyms; it->nlist_idx++, nl_addr += sizeof(struct nlist_64)) {
             
@@ -778,7 +778,7 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
     void *addr = NULL;
     mach_header_t mh = symrez->header;
     load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
-    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && !addr) {
+    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds) {
         switch (lc->cmd) {
 //            case LC_LOAD_DYLIB:
 //            case LC_LOAD_WEAK_DYLIB:
@@ -853,39 +853,11 @@ void sr_free(symrez_t symrez) {
     free(symrez);
 }
 
-sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
-    mach_header_t hdr = header;
-    if (hdr == SR_EXEC_HDR) {
-        hdr = get_base_addr();
-    } else if (header == SR_DYLD_HDR) {
-        dyld_all_image_infos_t aii = get_all_image_infos();
-        hdr = (mach_header_t)(aii->dyldImageLoadAddress);
-    }
-    
-    intptr_t slide = compute_image_slide(hdr);
-    
-    struct symrez sr = { 0 };
-    sr.header = hdr;
-    sr.slide = slide;
-    
-    if (!find_linkedit_commands(&sr)) {
-        return NULL;
-    }
-    
-    return sr_resolve_symbol(&sr, symbol);
-}
-
-sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
-    mach_header_t hdr = NULL;
-    
-    if(!find_image(image_name, &hdr)) {
-        return NULL;
-    }
-    
-    return symrez_resolve_once_mh(hdr, symbol);
-}
-
 int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
+    if (!mach_header) {
+        return 0;
+    }
+    
     symrez->header = NULL;
     symrez->slide = 0;
     symrez->nsyms = 0;
@@ -895,6 +867,7 @@ int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     symrez->exports_size = 0;
     symrez->iterator = NULL;
     mach_header_t hdr = mach_header;
+    
     if (hdr == SR_EXEC_HDR) {
         hdr = get_base_addr();
     } else if (hdr == SR_DYLD_HDR) {
@@ -912,6 +885,25 @@ int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     }
     
     return 1;
+}
+
+sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
+    struct symrez sr;
+    if (!symrez_init_mh(&sr, header)) {
+        return NULL;
+    }
+    
+    return sr_resolve_symbol(&sr, symbol);
+}
+
+sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
+    mach_header_t hdr = NULL;
+    
+    if(!find_image(image_name, &hdr)) {
+        return NULL;
+    }
+    
+    return symrez_resolve_once_mh(hdr, symbol);
 }
 
 symrez_t symrez_new_mh(mach_header_t mach_header) {
