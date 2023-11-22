@@ -104,7 +104,7 @@ sr_iterator_t sr_get_iterator(symrez_t symrez);
  *
  * @abstract Set custom slide value
  * 
- *@param symrez symrez object created by symrez_new
+ * @param symrez symrez object created by symrez_new
  *
  * @param slide new slide value
  *
@@ -157,7 +157,7 @@ sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol);
  *
  * @abstract Get next symbol
  *
- * @param iterator
+ * @param iterator iterator
  *
  * @return Opaque sr_iter_result_t reference or NULL if done
  *
@@ -166,41 +166,41 @@ sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol);
 sr_iter_result_t sr_iter_get_next(sr_iterator_t iterator);
 
 /*! 
- * @function sr_iter_get_addr
+ * @function sr_iter_get_ptr
  *
  * @abstract Get current symbol address
  *
- * @param iterator
+ * @param iterator iterator
  *
- * @return Pointer to symbol location.
+ * @return Pointer to symbol location or NULL if not found.
  * */
-sr_ptr_t sr_iter_get_ptr(sr_iterator_t iter);
+sr_ptr_t sr_iter_get_ptr(sr_iterator_t iterator);
 
 /*! 
  * @function sr_iter_get_symbol
  *
  * @abstract Get current symbol name
  *
- * @param iterator
+ * @param iterator iterator
  *
  * @return volatile string reference to symbol name
  *
  * @discussion Use strdup or sr_iter_copy_symbol() if you need to cache or save the symbol name.
  * */
-sr_symbol_t sr_iter_get_symbol(sr_iterator_t iter);
+sr_symbol_t sr_iter_get_symbol(sr_iterator_t iterator);
 
 /*! 
  * @function sr_iter_copy_symbol
  *
  * @abstract Copy-out current symbol name
  *
- * @param iterator
+ * @param iterator iterator
  *
  * @param dest Copy destination or NULL to only get strlen
  *
  * @return strlen of symbol
  * */
-size_t sr_iter_copy_symbol(sr_iterator_t iter, char *dest);
+size_t sr_iter_copy_symbol(sr_iterator_t iterator, char *dest);
 
 __END_DECLS
 OS_ASSUME_NONNULL_END
