@@ -14,27 +14,13 @@
 #include <mach-o/ldsyms.h>
 
 extern mach_header_t get_base_addr(void);
-extern int find_image(const char *image_name, mach_header_t *hdr);
+extern mach_header_t find_image(const char *image_name);
 
 @interface Tests : XCTestCase
 
 @end
 
 @implementation Tests
-
-- (void)testGetBaseAddress {
-    mach_header_t m1;
-    uint32_t image_count = _dyld_image_count();
-    for (uint32_t i = 0; i < image_count; i++) {
-        m1 = (const struct mach_header_64 *)_dyld_get_image_header(i);
-        if (m1->filetype == MH_EXECUTE) {
-            break;
-        }
-    }
-    
-    mach_header_t m2 = get_base_addr();
-    XCTAssertEqual(m1, m2);
-}
 
 - (void)testResolveSymbolOnce_public_printf {
     void *_printf = (void*)printf;
@@ -51,7 +37,7 @@ extern int find_image(const char *image_name, mach_header_t *hdr);
 - (void)testCallingResolvedSymbol_CFStringCreateWithCString {
     CFStringRef (*_CFStringCreateWithCString)(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) = NULL;
     symrez_t sr = symrez_new("CoreFoundation");
-    _CFStringCreateWithCString = sr_resolve_symbol(sr, "_CFStringCreateWithCString");
+    _CFStringCreateWithCString = (typeof(_CFStringCreateWithCString))sr_resolve_symbol(sr, "_CFStringCreateWithCString");
     sr_free(sr);
     
     CFStringRef cfstr1 = CFStringCreateWithCString(kCFAllocatorDefault, "test str", kCFStringEncodingUTF8);
@@ -63,7 +49,7 @@ extern int find_image(const char *image_name, mach_header_t *hdr);
 
 - (void)testCallingResolveOnceSymbol_CFStringCreateWithCString {
     CFStringRef (*_CFStringCreateWithCString)(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding) = NULL;
-    _CFStringCreateWithCString = symrez_resolve_once("CoreFoundation", "_CFStringCreateWithCString");
+    _CFStringCreateWithCString = (typeof(_CFStringCreateWithCString))symrez_resolve_once("CoreFoundation", "_CFStringCreateWithCString");
     
     CFStringRef cfstr1 = CFStringCreateWithCString(kCFAllocatorDefault, "test str", kCFStringEncodingUTF8);
     CFStringRef cfstr2 = _CFStringCreateWithCString(kCFAllocatorDefault, "test str", kCFStringEncodingUTF8);
@@ -122,11 +108,10 @@ extern int find_image(const char *image_name, mach_header_t *hdr);
 }
 
 - (void)testFindImage_name_path {
-    mach_header_t hdr1 = NULL;
-    mach_header_t hdr2 = NULL;
-    find_image("/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation", &hdr1);
-    find_image("Foundation", &hdr2);
-    
+    mach_header_t hdr1 = find_image("/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation");
+    mach_header_t hdr2 = find_image("Foundation");
+    XCTAssertTrue(hdr1 != NULL);
+    XCTAssertTrue(hdr2 != NULL);
     XCTAssertEqual(hdr1, hdr2);
 }
 

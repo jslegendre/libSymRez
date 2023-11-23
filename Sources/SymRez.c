@@ -52,7 +52,7 @@ typedef struct nlist_64 nlist_64;
 typedef void* symtab_t;
 typedef void* strtab_t;
 
-SR_STATIC int symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
+SR_STATIC bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 
 SR_STATIC dyld_all_image_infos_t _g_all_image_infos = NULL;
 
@@ -86,7 +86,7 @@ struct sr_iterator {
 };
 
 SR_STATIC bool __attribute__((const))
-_strneq_fast(const char *ptr0, const char *ptr1, size_t len) {
+sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
     size_t fast = len/sizeof(size_t) + 1;
     size_t offset = 0;
     int current_block = 0;
@@ -98,7 +98,7 @@ _strneq_fast(const char *ptr0, const char *ptr1, size_t len) {
     size_t *lptr1 = (size_t*)ptr1;
     
     while(current_block < fast){
-        if(lptr0[current_block] ^ lptr1[current_block]){
+        if (lptr0[current_block] ^ lptr1[current_block]){
             offset = current_block * sizeof(size_t);
             break;
         }
@@ -116,6 +116,19 @@ _strneq_fast(const char *ptr0, const char *ptr1, size_t len) {
     
     
     return true;
+}
+
+SR_INLINE const char * _Nullable
+sr_strrchr(const char *s, int c) {
+    size_t len = strlen(s) - 1;
+    const char *pp = (s + len);
+    while (len-- >= 0) {
+        if (unlikely(*pp-- == '/')) {
+            return pp+2;
+        }
+    }
+    
+    return NULL;
 }
 
 SR_INLINE intptr_t read_uleb128(void** ptr) {
@@ -313,33 +326,30 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     return 1;
 }
 
-SR_INLINE bool __attribute__((const))
-find_image_by_name(const char *image_name, mach_header_t *hdr) {
-    *hdr = NULL;
+SR_INLINE mach_header_t __attribute__((const))
+find_image_by_name(const char *image_name) {
     uint32_t block = *(uint32_t*)image_name;
     
     dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
     const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
     for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
         const char *p = info_array[i].imageFilePath;
-        const char *img = strrchr(p, '/');
-        ++img;
+        const char *img = sr_strrchr(p, '/');
         
         if (block ^ *(uint32_t*)img) continue;
         if (strcmp(img, image_name) == 0) {
-            *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
-            return true;
+            return (mach_header_t)(info_array[i].imageLoadAddress);
         }
     }
     
-    return false;
+    return NULL;
 }
 
-SR_STATIC bool __attribute__((const))
-find_image(const char *image_name, mach_header_t *hdr) {
-    *hdr = NULL;
+SR_STATIC mach_header_t __attribute__((const))
+find_image(const char *image_name) {
+    
     if (*image_name ^ '/') {
-        return find_image_by_name(image_name, hdr);
+        return find_image_by_name(image_name);
     }
 
     size_t name_len = strlen(image_name);
@@ -347,13 +357,12 @@ find_image(const char *image_name, mach_header_t *hdr) {
     const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
     for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
         const char *p = info_array[i].imageFilePath;
-        if (unlikely(_strneq_fast(p, image_name, name_len))) {
-            *hdr = (mach_header_t)(info_array[i].imageLoadAddress);
-            return true;
+        if (unlikely(sr_strneq(p, image_name, name_len))) {
+            return (mach_header_t)(info_array[i].imageLoadAddress);
         }
     }
 
-    return false;
+    return NULL;
 }
 
 mach_header_t get_base_addr(void) {
@@ -697,14 +706,14 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-        if (nl->n_un.n_strx == 0) continue;
+        if (unlikely(nl->n_un.n_strx == 0)) continue;
         
         const char *str = (const char *)strtab + nl->n_un.n_strx;
-        if (*(uint32_t*)str ^ sym_block) continue;
+        if (likely(*(uint32_t*)str ^ sym_block)) continue;
         
-        if (strncmp(str, symbol, sym_len) == 0) {
+        if (likely(strncmp(str, symbol, sym_len) == 0)) {
             uint64_t n_value = nl->n_value;
-            if (n_value > 0) {
+            if (likely(n_value > 0)) {
                 addr = (void *)(n_value + slide);
                 break;
             }
@@ -724,7 +733,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
     void *addr = NULL;
     void *end = (void*)((uintptr_t)exportTrie + symrez->exports_size);
     const uint8_t* node = walk_export_trie(exportTrie, end, symbol);
-    if (node) {
+    if (likely(node)) {
         const uint8_t* p = node;
         uintptr_t flags = read_uleb128((void**)&p);
         if ((flags & EXPORT_SYMBOL_FLAGS_REEXPORT) ||
@@ -740,7 +749,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
             
             struct symrez sr;
             mach_header_t hdr = NULL;
-            if (unlikely(!find_image(dylib, &hdr))) return NULL;
+            if (unlikely(!(hdr = find_image(dylib)))) return NULL;
             if (unlikely(!symrez_init_mh(&sr, hdr))) return NULL;
             
             return sr_resolve_symbol(&sr, importedName);
@@ -789,13 +798,13 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
             case LC_LOAD_UPWARD_DYLIB: {
                 const struct dylib_command *dylibCmd = (void*)lc;
                 const char *dylib = (char*)((void*)lc + dylibCmd->dylib.name.offset);
-                if (!dylib) {
+                if (unlikely(!dylib)) {
                     goto next;
                 }
                 
                 struct symrez sr = { 0 };
                 mach_header_t hdr = NULL;
-                if(unlikely(!find_image(dylib, &hdr))) {
+                if(unlikely(!(hdr = find_image(dylib)))) {
                     goto next;
                 }
                 
@@ -855,9 +864,9 @@ void sr_free(symrez_t symrez) {
     free(symrez);
 }
 
-int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
+bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     if (unlikely(!mach_header)) {
-        return 0;
+        return false;
     }
     
     symrez->header = NULL;
@@ -883,10 +892,10 @@ int symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     symrez->slide = slide;
     
     if (unlikely(!find_linkedit_commands(symrez))) {
-        return 0;
+        return false;
     }
     
-    return 1;
+    return true;
 }
 
 sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
@@ -901,7 +910,7 @@ sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
 sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
     mach_header_t hdr = NULL;
     
-    if(unlikely(!find_image(image_name, &hdr))) {
+    if(unlikely(!(hdr = find_image(image_name)))) {
         return NULL;
     }
     
@@ -917,7 +926,6 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
     if (unlikely(!symrez_init_mh(symrez, mach_header))) {
         free(symrez);
         symrez = NULL;
-        return NULL;
     }
     
     return symrez;
@@ -926,9 +934,9 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
 symrez_t symrez_new(char *image_name) {
     
     mach_header_t hdr = NULL;
-    if(unlikely(!find_image(image_name, &hdr))) {
+    if(unlikely(!(hdr = find_image(image_name)))) {
         return NULL;
     }
-    
+
     return symrez_new_mh(hdr);
 }
