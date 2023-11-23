@@ -344,6 +344,7 @@
 				OTHER_CFLAGS = (
 					"-momit-leaf-frame-pointer",
 					"-fno-modules",
+					"-foptimize-sibling-calls",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -370,6 +371,7 @@
 				OTHER_CFLAGS = (
 					"-momit-leaf-frame-pointer",
 					"-fno-modules",
+					"-foptimize-sibling-calls",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -385,10 +387,17 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_UNROLL_LOOPS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				MACOSX_DEPLOYMENT_TARGET = 12.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = (
+					"-foptimize-sibling-calls",
+					"-momit-leaf-frame-pointer",
+					"-fno-modules",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -404,10 +413,17 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_UNROLL_LOOPS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				MACOSX_DEPLOYMENT_TARGET = 12.1;
 				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = (
+					"-foptimize-sibling-calls",
+					"-momit-leaf-frame-pointer",
+					"-fno-modules",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
