@@ -482,18 +482,29 @@ sr_iter_get_next_nlist(sr_iterator_t it) {
     return NULL;
 }
 
-sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
-    symrez_t sr = it->symrez;
-    it->result.ptr = NULL;
-    it->result.symbol = NULL;
-    
-    if (it->nlist_idx < sr->nsyms) {
-        sr_iter_result_t ret = sr_iter_get_next_nlist(it);
-        if (likely(ret != NULL)) {
-            return ret;
-        }
-    }
+/*
+Example export tree of this library:
+             s
+            / \
+           /   \
+          /   ymrez_
+         /     / \
+        /     /   \
+       /    new  init
+      r_
+     / \
+    f  resolve_symbol
+   / \
+ ree or_each
 
+Consider each node in the export tree a symbol prefix and it's children to be suffixes.
+The leaves of the tree represent complete symbols.
+ 
+Traverse the tree in iterative order, accumulating complete symbols by appending the
+suffix of the current node to the prefix of the parent node.
+ */
+SR_INLINE sr_iter_result_t
+sr_iter_get_next_export(sr_iterator_t it) {
     if (unlikely(it->stack_top == 0)) {
         return NULL;
     }
@@ -525,7 +536,7 @@ sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
         uint8_t child_count = *children++;
         if (unlikely(child_count == 0)) { // Handle leaf node
             it->result.symbol = sym;
-            it->result.ptr = (void *)resolve_export_node(++node, sr->header, sym);
+            it->result.ptr = (void *)resolve_export_node(++node, it->symrez->header, sym);
             return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
         }
         
@@ -571,6 +582,21 @@ sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
     return NULL; // No more nodes
 }
 
+sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
+    symrez_t sr = it->symrez;
+    it->result.ptr = NULL;
+    it->result.symbol = NULL;
+    
+    if (it->nlist_idx < sr->nsyms) {
+        sr_iter_result_t ret = sr_iter_get_next_nlist(it);
+        if (likely(ret != NULL)) {
+            return ret;
+        }
+    }
+
+    return sr_iter_get_next_export(it);
+}
+
 void sr_iterator_free(sr_iterator_t iterator) {
     free(iterator);
 }
@@ -583,106 +609,39 @@ sr_iterator_t sr_get_iterator(symrez_t symrez) {
     return symrez->iterator;
 }
 
-SR_INLINE
-bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work, void *context) {
-    void *addr = resolve_export_node(node, symrez->header, sym);
-    return work(sym, (void*)addr, context);
-}
-
-/*
-Example export tree of this library:
-             s
-            / \
-           /   \
-          /   ymrez_
-         /     / \
-        /     /   \
-       /    new  init
-      r_
-     / \
-    f  resolve_symbol
-   / \
- ree or_each
-
-Consider each node in the export tree a symbol prefix and it's children to be suffixes.
-The leaves of the tree represent complete symbols.
- 
-Traverse the tree in iterative preorder, accumulating complete symbols by appending the
-suffix of the current node to the prefix of the parent node.
- */
-SR_STATIC void sr_for_each_in_trie(symrez_t symrez, symrez_function_t work, void *context) {
-    void *export_trie = symrez->exports;
-    const uint8_t *start = export_trie;
-
-    struct stack_node {
-        const uint8_t* node;
-        char sym[PATH_MAX];
-        size_t sym_len;
-    };
-
-    struct stack_node node_stack[PATH_MAX];
-    size_t stack_top = 0;
-    node_stack[stack_top++].node = start;
-    node_stack[stack_top].sym_len = 0;
-    while (stack_top) {
-        const uint8_t *node = node_stack[--stack_top].node;
-        char *sym = node_stack[stack_top].sym;
-        size_t sym_len = node_stack[stack_top].sym_len;
-        
-        const uint8_t *p = node;
-        uintptr_t terminal_size = *p++;
-        if (unlikely(terminal_size > 127)) {
-            --p;
-            terminal_size = read_uleb128((void**)&p);
-        }
-
-        const uint8_t* children = p + terminal_size;
-        uint8_t child_count = *children++;
-        if (unlikely(child_count == 0)) { // Handle leaf node
-            if (sr_for_each_trie_callback(symrez, ++node, sym, work, context)) {
-                return;
-            }
-            continue;
-        }
-
-        p = children;
-        size_t parent_len = sym_len;
-        
-        // First child needs to be first to get popped so
-        // increment stack_top by child_count and iterate
-        // over children first to last. Decrement stack_top
-        // each time to place siblings from top to bottom,
-        // maintaining preorder.
-        // The current node is popped and will be replaced
-        // by the last child.
-        stack_top += child_count;
-        for (int i = child_count; i > 0; i--) {
-            char *child_sym = node_stack[--stack_top].sym;
-            
-            // At child_count, stack will be at original
-            // (parent) stack_node, which already contains
-            // `sym`. Reuse it, saving a memcpy.
-            if (likely(i != 1)) {
-                memcpy(child_sym, sym, parent_len);
-            }
-            
-            size_t child_len = strlen((char*)p);
-            memcpy(&child_sym[parent_len], (char*)p, child_len);
-            
-            size_t new_len = parent_len + child_len;
-            node_stack[stack_top].sym_len = new_len;
-            child_sym[new_len] = '\0';
-            
-            p += child_len + 1;
-            
-            uintptr_t nodeOffset = read_uleb128((void**)&p);
-            if (likely(nodeOffset != 0)) {
-                node_stack[stack_top].node = &start[nodeOffset];
-            }
-        }
-        // Restore stack_top
-        stack_top += child_count;
+static bool sr_for_each_handle_node(symrez_t symrez, const uint8_t *node, char *sym, size_t len, symrez_function_t work, void *context) {
+    bool stop = false;
+    const uint8_t *p = node;
+    uintptr_t terminal_size = *p++;
+    
+    if (unlikely(terminal_size > 127)) {
+        --p;
+        terminal_size = read_uleb128((void**)&p);
     }
+    
+    const uint8_t* children = p + terminal_size;
+    uint8_t child_count = *children++;
+    
+    if (unlikely(child_count == 0)) { // Handle leaf node
+        void *addr = resolve_export_node(node, symrez->header, sym);
+        return work(sym, (void*)addr, context);
+    }
+    
+    p = children;
+    for (; child_count > 0; --child_count) {
+        size_t child_len = strlen((char*)p);
+        strncpy(&sym[len], (char*)p, child_len + 1);
+        p += child_len + 1;
+        
+        uintptr_t offset = read_uleb128((void**)&p);
+        if (likely(offset != 0)) {
+            const uint8_t *n = &symrez->exports[offset];
+            stop = sr_for_each_handle_node(symrez, n, sym, len+child_len, work, context);
+            if (unlikely(stop)) break;
+        }
+    }
+    
+    return stop;
 }
 
 void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
@@ -698,15 +657,19 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
         if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && symrez->exports)) {
             continue;
         }
+        
         char *str = (char *)strtab + nl->n_un.n_strx;
         addr = (void *)(nl->n_value + slide);
-        if (work(str, addr, context)) {
-            break;
+        if (unlikely(work(str, addr, context))) {
+            return;
         }
     }
     
     if (likely(symrez->exports_size)) {
-        sr_for_each_in_trie(symrez, work, context);
+        void *exports = symrez->exports;
+        const uint8_t *start = exports;
+        char sym[0x2000] = {0};
+        sr_for_each_handle_node(symrez, start, sym, 0, work, context);
     }
 }
 

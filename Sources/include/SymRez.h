@@ -84,7 +84,7 @@ sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol);
  *
  * @param callback callback for processing each iteration. Return true to stop loop.
  *
- * @discussion String passed to 'callback' may be ephemeral .
+ * @discussion More performant and efficient than 'sr_iterator', but less convenient. String passed to 'callback' should be considered ephemeral. 
  * */
 void sr_for_each(symrez_t symrez, void * _Nullable context, symrez_function_t callback);
 
@@ -95,7 +95,9 @@ void sr_for_each(symrez_t symrez, void * _Nullable context, symrez_function_t ca
  *
  * @param symrez symrez object created by symrez_new
  *
- * @return iterator reference 
+ * @return iterator reference
+ *
+ * @discussion First call to 'sr_get_iterator' will allocate more  memory. Consider using 'sr_for_each' for more performance.
  * */
 sr_iterator_t sr_get_iterator(symrez_t symrez);
 
