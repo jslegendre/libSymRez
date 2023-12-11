@@ -123,7 +123,7 @@ sr_strrchr(const char *s, int c) {
     size_t len = strlen(s) - 1;
     const char *pp = (s + len);
     while (len-- >= 0) {
-        if (unlikely(*pp-- == '/')) {
+        if (unlikely(*pp-- == c)) {
             return pp+2;
         }
     }
@@ -131,7 +131,7 @@ sr_strrchr(const char *s, int c) {
     return NULL;
 }
 
-SR_INLINE intptr_t read_uleb128(void** ptr) {
+SR_INLINE uint64_t read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
     int bit = 0;
@@ -143,7 +143,7 @@ SR_INLINE intptr_t read_uleb128(void** ptr) {
     } while (*p++ & 0x80);
     
     *ptr = p;
-    return (uintptr_t)result;
+    return result;
 }
 
 SR_STATIC const uint8_t* 
@@ -387,6 +387,43 @@ mach_header_t get_base_addr(void) {
     return (mach_header_t)address;
 }
 
+SR_INLINE void *
+resolve_export_node(const uint8_t *node, mach_header_t mh, char *symbol) {
+    void *addr = NULL;
+    uintptr_t flags = read_uleb128((void**)&node);
+    if (flags & EXPORT_SYMBOL_FLAGS_REEXPORT) {
+        uintptr_t ordinal = read_uleb128((void**)&node);
+        char* importedName = (char*)node;
+        if (!importedName || strlen(importedName) == 0) {
+            importedName = symbol;
+        }
+        const char *dylib = dylib_name_for_ordinal(mh, ordinal);
+        
+        if (unlikely(!dylib)) return NULL;
+        
+        struct symrez sr;
+        mach_header_t hdr = NULL;
+        if (unlikely(!(hdr = find_image(dylib)))) return NULL;
+        if (unlikely(!symrez_init_mh(&sr, hdr))) return NULL;
+        
+        return sr_resolve_symbol(&sr, importedName);
+    }
+    
+    switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
+        case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
+            uint64_t offset = read_uleb128((void**)&node);
+            addr = (void*)(offset + (uint64_t)mh);
+            break;
+        }
+        case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE:
+            addr = (void*)read_uleb128((void**)&node);
+            break;
+        default:
+            break;
+    }
+    return addr;
+}
+
 sr_iterator_t sr_iterator_create(symrez_t symrez) {
     sr_iterator_t iterator = calloc(1, sizeof(struct sr_iterator));
     iterator->symrez = symrez;
@@ -418,35 +455,45 @@ size_t sr_iter_copy_symbol(sr_iterator_t iter, char *dest) {
     return ret;
 }
 
+SR_INLINE sr_iter_result_t
+sr_iter_get_next_nlist(sr_iterator_t it) {
+    symrez_t sr = it->symrez;
+    strtab_t strtab = sr->strtab;
+    symtab_t symtab = sr->symtab;
+    intptr_t slide = sr->slide;
+    int i = it->nlist_idx;
+    uint64_t nl_addr = (uintptr_t)symtab + (i *sizeof(struct nlist_64));
+    
+    for (; it->nlist_idx < sr->nsyms; it->nlist_idx++, nl_addr += sizeof(struct nlist_64)) {
+        
+        struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+        if (nl->n_un.n_strx == 0) continue;
+        if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && sr->exports)) {
+            continue;
+        }
+
+        char *str = (char *)strtab + nl->n_un.n_strx;
+        it->nlist_idx += 1;
+        it->result.symbol = str;
+        it->result.ptr = (void *)(nl->n_value + slide);
+        return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
+    }
+    
+    return NULL;
+}
+
 sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
     symrez_t sr = it->symrez;
     it->result.ptr = NULL;
     it->result.symbol = NULL;
     
     if (it->nlist_idx < sr->nsyms) {
-        strtab_t strtab = sr->strtab;
-        symtab_t symtab = sr->symtab;
-        intptr_t slide = sr->slide;
-        int i = it->nlist_idx;
-        uint64_t nl_addr = (uintptr_t)symtab + (i *sizeof(struct nlist_64));
-        
-        for (; it->nlist_idx < sr->nsyms; it->nlist_idx++, nl_addr += sizeof(struct nlist_64)) {
-            
-            struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-            if (nl->n_un.n_strx == 0) continue;
-            if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && sr->exports)) {
-                continue;
-            }
-
-            char *str = (char *)strtab + nl->n_un.n_strx;
-            it->nlist_idx += 1;
-            it->result.symbol = str;
-            it->result.ptr = (void *)(nl->n_value + slide);
-            return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
+        sr_iter_result_t ret = sr_iter_get_next_nlist(it);
+        if (likely(ret != NULL)) {
+            return ret;
         }
     }
 
-    
     if (unlikely(it->stack_top == 0)) {
         return NULL;
     }
@@ -477,26 +524,8 @@ sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
         const uint8_t* children = p + terminal_size;
         uint8_t child_count = *children++;
         if (unlikely(child_count == 0)) { // Handle leaf node
-            uintptr_t addr = 0;
-            ++node;
-            uintptr_t flags = read_uleb128((void**)&node);
-            switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
-                case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
-                    addr = read_uleb128((void**)&node);
-                    break;
-                }
-                case EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION:
-                case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
-                    uintptr_t offset = read_uleb128((void**)&node);
-                    addr = (uintptr_t)(sr->header) + offset;
-                    break;
-                }
-                default:
-                    break;
-            }
-            
             it->result.symbol = sym;
-            it->result.ptr = (void *)addr;
+            it->result.ptr = (void *)resolve_export_node(++node, sr->header, sym);
             return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
         }
         
@@ -556,24 +585,8 @@ sr_iterator_t sr_get_iterator(symrez_t symrez) {
 
 SR_INLINE
 bool sr_for_each_trie_callback(symrez_t symrez, const uint8_t *node, char *sym, symrez_function_t work, void *context) {
-    uintptr_t addr = 0;
-    uintptr_t flags = read_uleb128((void**)&node);
-    switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
-        case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE: {
-            addr = read_uleb128((void**)&node);
-            break;
-        }
-        case EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION:
-        case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
-            uintptr_t offset = read_uleb128((void**)&node);
-            addr = (uintptr_t)(symrez->header) + offset;
-            break;
-        }
-        default:
-            break;
-    }
-    
-    return work(sym, context, (void*)addr);
+    void *addr = resolve_export_node(node, symrez->header, sym);
+    return work(sym, (void*)addr, context);
 }
 
 /*
@@ -682,7 +695,9 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-        if ((nl->n_type & N_STAB) || nl->n_sect == 0) continue; // External symbol
+        if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && symrez->exports)) {
+            continue;
+        }
         char *str = (char *)strtab + nl->n_un.n_strx;
         addr = (void *)(nl->n_value + slide);
         if (work(str, addr, context)) {
@@ -690,8 +705,9 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
         }
     }
     
-    if (symrez->exports_size)
+    if (likely(symrez->exports_size)) {
         sr_for_each_in_trie(symrez, work, context);
+    }
 }
 
 SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
@@ -706,8 +722,6 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     
     for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
         struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
-        if (unlikely(nl->n_un.n_strx == 0)) continue;
-        
         const char *str = (const char *)strtab + nl->n_un.n_strx;
         if (likely(*(uint32_t*)str ^ sym_block)) continue;
         
@@ -728,59 +742,12 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
         return NULL;
     }
 
-    mach_header_t mh = symrez->header;
-    void *exportTrie = symrez->exports;
     void *addr = NULL;
+    void *exportTrie = symrez->exports;
     void *end = (void*)((uintptr_t)exportTrie + symrez->exports_size);
     const uint8_t* node = walk_export_trie(exportTrie, end, symbol);
     if (likely(node)) {
-        const uint8_t* p = node;
-        uintptr_t flags = read_uleb128((void**)&p);
-        if ((flags & EXPORT_SYMBOL_FLAGS_REEXPORT) ||
-            (flags & EXPORT_SYMBOL_FLAGS_WEAK_REEXPORT)) {
-            uintptr_t ordinal = read_uleb128((void**)&p);
-            char* importedName = (char*)p;
-            if (!importedName || strlen(importedName) == 0) {
-                importedName = symbol;
-            }
-            const char *dylib = dylib_name_for_ordinal(mh, ordinal);
-            
-            if (unlikely(!dylib)) return NULL;
-            
-            struct symrez sr;
-            mach_header_t hdr = NULL;
-            if (unlikely(!(hdr = find_image(dylib)))) return NULL;
-            if (unlikely(!symrez_init_mh(&sr, hdr))) return NULL;
-            
-            return sr_resolve_symbol(&sr, importedName);
-        }
-        
-        switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
-            case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
-                if (flags & EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
-                    typedef uintptr_t (*ResolverProc)(void);
-                    ResolverProc resolver = (ResolverProc)(read_uleb128((void**)&p) + (uintptr_t)mh);
-                    #if __has_feature(ptrauth_calls)
-                    resolver = (ResolverProc)__builtin_ptrauth_sign_unauthenticated(resolver, ptrauth_key_asia, 0);
-                    #endif
-                    
-                    uintptr_t result = (*resolver)();
-                    #if __has_feature(ptrauth_calls)
-                    result = (uintptr_t)__builtin_ptrauth_strip((void*)result, ptrauth_key_asia);
-                    #endif
-                    return (void*)result;
-                }
-                
-                uintptr_t offset = read_uleb128((void**)&p);
-                addr = (void*)(offset + (uintptr_t)mh);
-                break;
-            }
-            case EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE:
-                addr = (void*)read_uleb128((void**)&p);
-                break;
-            default:
-                break;
-        }
+        addr = resolve_export_node(node, symrez->header, symbol);
     }
     
     return addr;
