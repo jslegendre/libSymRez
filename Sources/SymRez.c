@@ -54,8 +54,6 @@ typedef void* strtab_t;
 
 SR_STATIC bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 
-SR_STATIC dyld_all_image_infos_t _g_all_image_infos = NULL;
-
 struct symrez {
     mach_header_t header;
     intptr_t slide;
@@ -204,6 +202,7 @@ walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
 
 SR_STATIC dyld_all_image_infos_t
 get_all_image_infos(void) {
+    static dyld_all_image_infos_t _g_all_image_infos = NULL;
     if (unlikely(!_g_all_image_infos)) {
         task_dyld_info_data_t dyld_info;
         mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
