@@ -44,9 +44,18 @@
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+#define mh_for_each_lc(mh, lc, ...) \
+do {\
+struct load_command *lc = (struct load_command*)((uint64_t)mh + sizeof(struct mach_header_64)); \
+for (int i = 0; i < mh->ncmds; i++, lc = (void*)((uint64_t)lc + (uint64_t)lc->cmdsize)) { \
+__VA_ARGS__ \
+}\
+} while (0);
+
 extern const struct mach_header_64 _mh_execute_header;
 typedef struct load_command* load_command_t;
 typedef struct segment_command_64* segment_command_t;
+typedef struct section_64* section_t;
 typedef struct dyld_all_image_infos* dyld_all_image_infos_t;
 typedef struct nlist_64 nlist_64;
 typedef void* symtab_t;
@@ -83,35 +92,42 @@ struct sr_iterator {
     struct sr_iter_result result;
 };
 
-SR_STATIC bool __attribute__((const))
+SR_STATIC bool
 sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
-    size_t fast = len/sizeof(size_t) + 1;
     size_t offset = 0;
-    int current_block = 0;
+    size_t current_block = 0;
     
-    if(unlikely(len < sizeof(size_t))) { fast = 0; }
-    
+    if(len < sizeof(size_t)) {
+        goto finish;
+    }
     
     size_t *lptr0 = (size_t*)ptr0;
     size_t *lptr1 = (size_t*)ptr1;
+    size_t fast = len / sizeof(size_t);
     
-    while(current_block < fast){
-        if (lptr0[current_block] ^ lptr1[current_block]){
-            offset = current_block * sizeof(size_t);
+    while(current_block < fast) {
+        if (lptr0[current_block] ^ lptr1[current_block]) {
             break;
         }
         
         ++current_block;
     }
     
-    while(offset < len){
-        if(ptr0[offset] ^ ptr1[offset]) {
+    offset = current_block * sizeof(size_t);
+    
+finish:
+    while (offset < len && ptr0[offset] != '\0') {
+        if (ptr0[offset] ^ ptr1[offset]) {
             return false;
         }
         
         ++offset;
     }
     
+    // At this place we are sure that ptr0[offset] is '\0'.
+    if (offset < len) {
+        return ptr1[offset] == '\0';
+    }
     
     return true;
 }
@@ -129,7 +145,8 @@ sr_strrchr(const char *s, int c) {
     return NULL;
 }
 
-SR_INLINE uint64_t read_uleb128(void** ptr) {
+SR_INLINE uint64_t 
+read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
     int bit = 0;
@@ -217,67 +234,51 @@ get_all_image_infos(void) {
     return _g_all_image_infos;
 }
 
-SR_STATIC segment_command_t __attribute__((const))
+SR_INLINE segment_command_t
 find_lc_segment(mach_header_t mh, const char *segname) {
-    load_command_t lc;
-    segment_command_t seg, foundseg = NULL;
-    
-    lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
-    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds) {
+    mh_for_each_lc(mh, lc, {
         if (lc->cmd == LC_SEGMENT_64) {
-            seg = (segment_command_t)lc;
-            if (strcmp(seg->segname, segname) == 0) {
-                foundseg = seg;
-                break;
+            segment_command_t seg = (segment_command_t)lc;
+            if (sr_strneq(seg->segname, segname, 16)) {
+                return seg;
             }
         }
-        
-        lc = (load_command_t)((uint64_t)lc + (uint64_t)lc->cmdsize);
-    }
+    })
     
-    return foundseg;
+    return NULL;
 }
 
-SR_STATIC load_command_t __attribute__((const))
+SR_INLINE load_command_t
 find_load_command(mach_header_t mh, uint32_t cmd) {
-    load_command_t lc, foundlc = NULL;
-    
-    lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
-    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds) {
+    mh_for_each_lc(mh, lc, {
         if (lc->cmd == cmd) {
-            foundlc = (load_command_t)lc;
-            break;
+            return lc;
         }
-        
-        lc = (load_command_t)((uint64_t)lc + (uint64_t)lc->cmdsize);
-    }
+    })
     
-    return foundlc;
+    return NULL;
 }
 
-SR_STATIC const char * __attribute__((const))
+SR_STATIC const char *
 dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
-    const char *dylib = NULL;
-    load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
-    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds && ordinal > 0) {
+    mh_for_each_lc(mh, lc, {
         switch (lc->cmd) {
             case LC_LOAD_DYLIB:
             case LC_LOAD_WEAK_DYLIB:
             case LC_REEXPORT_DYLIB:
             case LC_LOAD_UPWARD_DYLIB: {
-                const struct dylib_command *dylibCmd = (void*)lc;
-                dylib = (const char*)((void*)lc + dylibCmd->dylib.name.offset);
-                --ordinal;
+                if (--ordinal == 0) {
+                    const struct dylib_command *dylibCmd = (void*)lc;
+                    return (const char*)((void*)dylibCmd + dylibCmd->dylib.name.offset);;
+                }
             }
         }
-        
-        lc = (load_command_t)((uint64_t)lc + (uint64_t)lc->cmdsize);
-    }
-    
-    return dylib;
+    })
+
+    __builtin_unreachable();
 }
 
-SR_INLINE intptr_t __attribute__((const))
+SR_INLINE intptr_t
 compute_image_slide(mach_header_t mh) {
     intptr_t res = 0;
     uint64_t mh_addr = (uint64_t)(void*)mh;
@@ -325,8 +326,8 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     return 1;
 }
 
-SR_INLINE mach_header_t __attribute__((const))
-find_image_by_name(const char *image_name) {
+SR_INLINE mach_header_t
+find_image_by_name(const char *image_name, size_t len) {
     uint32_t block = *(uint32_t*)image_name;
     
     dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
@@ -334,9 +335,9 @@ find_image_by_name(const char *image_name) {
     for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
         const char *p = info_array[i].imageFilePath;
         const char *img = sr_strrchr(p, '/');
-        
+
         if (block ^ *(uint32_t*)img) continue;
-        if (strcmp(img, image_name) == 0) {
+        if (sr_strneq(img, image_name, len)) {
             return (mach_header_t)(info_array[i].imageLoadAddress);
         }
     }
@@ -344,14 +345,14 @@ find_image_by_name(const char *image_name) {
     return NULL;
 }
 
-SR_STATIC mach_header_t __attribute__((const))
+SR_STATIC mach_header_t
 find_image(const char *image_name) {
+    size_t name_len = strlen(image_name);
     
     if (*image_name ^ '/') {
-        return find_image_by_name(image_name);
+        return find_image_by_name(image_name, name_len);
     }
 
-    size_t name_len = strlen(image_name);
     dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
     const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
     for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
@@ -364,7 +365,8 @@ find_image(const char *image_name) {
     return NULL;
 }
 
-mach_header_t get_base_addr(void) {
+SR_STATIC mach_header_t
+get_base_addr(void) {
     dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
     if (likely(dyld_all_image_infos)) {
         return (mach_header_t)(dyld_all_image_infos->infoArray[0].imageLoadAddress);
@@ -676,18 +678,18 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     strtab_t strtab = symrez->strtab;
     symtab_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
-    uintptr_t nl_addr = (uintptr_t)symtab;
-    uint64_t i = 0;
+    
     void *addr = NULL;
     size_t sym_len = strlen(symbol) + 1;
     uint32_t sym_block = *(uint32_t*)symbol;
     
-    for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
-        struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+    struct nlist_64 *start = (struct nlist_64 *)symtab;
+    struct nlist_64 *end = (struct nlist_64 *)&start[symrez->nsyms];
+    for (struct nlist_64 *nl = start; nl < end; ++nl) {
         const char *str = (const char *)strtab + nl->n_un.n_strx;
         if (likely(*(uint32_t*)str ^ sym_block)) continue;
         
-        if (likely(strncmp(str, symbol, sym_len) == 0)) {
+        if (likely(sr_strneq(str, symbol, sym_len))) {
             uint64_t n_value = nl->n_value;
             if (likely(n_value > 0)) {
                 addr = (void *)(n_value + slide);
@@ -717,28 +719,24 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
 
 SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
     void *addr = NULL;
-    mach_header_t mh = symrez->header;
-    load_command_t lc = (load_command_t)((uint64_t)mh + sizeof(struct mach_header_64));
-    while ((uint64_t)lc < (uint64_t)mh + (uint64_t)mh->sizeofcmds) {
+    mh_for_each_lc(symrez->header, lc, {
         switch (lc->cmd) {
-//            case LC_LOAD_DYLIB:
-//            case LC_LOAD_WEAK_DYLIB:
             case LC_REEXPORT_DYLIB:
             case LC_LOAD_UPWARD_DYLIB: {
                 const struct dylib_command *dylibCmd = (void*)lc;
                 const char *dylib = (char*)((void*)lc + dylibCmd->dylib.name.offset);
                 if (unlikely(!dylib)) {
-                    goto next;
+                    break;
                 }
                 
                 struct symrez sr = { 0 };
                 mach_header_t hdr = NULL;
                 if(unlikely(!(hdr = find_image(dylib)))) {
-                    goto next;
+                    break;
                 }
                 
                 if (unlikely(!symrez_init_mh(&sr, hdr))) {
-                    goto next;
+                    break;
                 }
                 
                 if (lc->cmd == LC_REEXPORT_DYLIB) {
@@ -752,11 +750,32 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
                 }
             }
         }
-    next:
-        lc = (load_command_t)((uint64_t)lc + (uint64_t)lc->cmdsize);
-    }
-    
+        
+    });
+
     return NULL;
+}
+
+SR_INLINE bool
+is_symbol_code(symrez_t symrez, sr_ptr_t sym) {
+    uint64_t addr = ((uint64_t)sym & ~0xFFFFFF0000000000ULL);
+    mh_for_each_lc(symrez->header, lc, {
+        if (lc->cmd != LC_SEGMENT_64) continue;
+        
+        segment_command_t seg = (segment_command_t)lc;
+        uint64_t seg_max = (seg->vmaddr + symrez->slide) + seg->vmsize;
+        if (addr > seg_max) continue;
+        
+        section_t sec_start = (section_t)((uint64_t)seg + sizeof(struct segment_command_64));
+        const section_t sec_end   = &sec_start[seg->nsects];
+        for (section_t sec = sec_start; sec < sec_end; ++sec) {
+            uint64_t sec_max = (sec->addr + symrez->slide) + sec->size;
+            if (addr > sec_max) continue;
+            return ((sec->flags & S_ATTR_PURE_INSTRUCTIONS) || (sec->flags & S_ATTR_SOME_INSTRUCTIONS));
+        }
+    });
+    
+    __builtin_unreachable();
 }
 
 sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol) {
@@ -770,8 +789,11 @@ sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol) {
     }
     
 #if __has_feature(ptrauth_calls)
-    if (likely(addr))
+    if (unlikely(!addr)) return addr;
+    
+    if (likely(is_symbol_code(symrez, addr))) {
         addr = ptrauth_sign_unauthenticated(addr, ptrauth_key_function_pointer, 0);
+    }
 #endif
     
     return addr;
