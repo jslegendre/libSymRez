@@ -19,7 +19,8 @@ let package = Package(
             dependencies: [],
             path: "Sources",
             cSettings: [
-                .unsafeFlags(["-momit-leaf-frame-pointer", "-foptimize-sibling-calls", "-fno-modules"])
+                .unsafeFlags(["-fno-modules"]),
+                .unsafeFlags(["-Os", "-momit-leaf-frame-pointer", "-foptimize-sibling-calls"], .when(configuration: .release)),
             ]
         ),
         .testTarget(
