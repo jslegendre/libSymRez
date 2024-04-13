@@ -44,21 +44,26 @@
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-#define mh_for_each_lc(mh, lc, ...) \
-do {\
-struct load_command *lc = (struct load_command*)((uint64_t)mh + sizeof(struct mach_header_64)); \
-for (int i = 0; i < mh->ncmds; i++, lc = (void*)((uint64_t)lc + (uint64_t)lc->cmdsize)) { \
-__VA_ARGS__ \
-}\
-} while (0);
+#define mh_for_each_lc(mh, lc) \
+for (struct load_command *lc = (struct load_command*)((uint64_t)mh + sizeof(struct mach_header_64)); \
+    (uint64_t)lc < (((uint64_t)mh + sizeof(struct mach_header_64)) + mh->sizeofcmds); \
+    lc = (void*)((uint64_t)lc + (uint64_t)lc->cmdsize))
+
+#define _sr_for_each_image_info(it, info) \
+dyld_all_image_infos_t info = get_all_image_infos(); \
+for(const struct dyld_image_info *it = info->infoArray; \
+    it < &info->infoArray[info->infoArrayCount]; \
+    ++it)
+
+#define sr_for_each_image_info(it) \
+    _sr_for_each_image_info(it, aii##__COUNTER__)
 
 extern const struct mach_header_64 _mh_execute_header;
 typedef struct load_command* load_command_t;
 typedef struct segment_command_64* segment_command_t;
 typedef struct section_64* section_t;
 typedef struct dyld_all_image_infos* dyld_all_image_infos_t;
-typedef struct nlist_64 nlist_64;
-typedef void* symtab_t;
+typedef struct nlist_64* nlist64_t;
 typedef void* strtab_t;
 
 SR_STATIC bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
@@ -66,13 +71,13 @@ SR_STATIC bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 struct symrez {
     mach_header_t header;
     intptr_t slide;
-    symtab_t symtab;
+    nlist64_t symtab;
     strtab_t strtab;
     uint32_t nsyms;
     void *exports;
     uintptr_t exports_size;
     sr_iterator_t iterator;
-};
+} __attribute__((__aligned__(64)));
 
 struct sr_iter_result {
     sr_ptr_t ptr;
@@ -90,7 +95,7 @@ struct sr_iterator {
         size_t sym_len;
     } node_stack[SR_ITER_STACK_DEPTH];
     struct sr_iter_result result;
-};
+} __attribute__((__aligned__(64)));
 
 SR_STATIC bool
 sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
@@ -116,18 +121,17 @@ sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
     offset = current_block * sizeof(size_t);
     
 finish:
-    while (offset < len && ptr0[offset] != '\0') {
-        if (ptr0[offset] ^ ptr1[offset]) {
+    ptr0 += offset;
+    ptr1 += offset;
+    do {
+        if (*ptr0 != *ptr1++) {
             return false;
         }
         
-        ++offset;
-    }
-    
-    // At this place we are sure that ptr0[offset] is '\0'.
-    if (offset < len) {
-        return ptr1[offset] == '\0';
-    }
+        if (*ptr0++ == '\0') {
+            break;
+        }
+    } while (++offset < len);
     
     return true;
 }
@@ -229,6 +233,7 @@ get_all_image_infos(void) {
         }
         
         _g_all_image_infos = (void*)(dyld_info.all_image_info_addr);
+        __builtin_assume(_g_all_image_infos != NULL);
     }
     
     return _g_all_image_infos;
@@ -236,32 +241,32 @@ get_all_image_infos(void) {
 
 SR_INLINE segment_command_t
 find_lc_segment(mach_header_t mh, const char *segname) {
-    mh_for_each_lc(mh, lc, {
+    mh_for_each_lc(mh, lc) {
         if (lc->cmd == LC_SEGMENT_64) {
             segment_command_t seg = (segment_command_t)lc;
             if (sr_strneq(seg->segname, segname, 16)) {
                 return seg;
             }
         }
-    })
+    }
     
     return NULL;
 }
 
 SR_INLINE load_command_t
 find_load_command(mach_header_t mh, uint32_t cmd) {
-    mh_for_each_lc(mh, lc, {
+    mh_for_each_lc(mh, lc) {
         if (lc->cmd == cmd) {
             return lc;
         }
-    })
+    }
     
     return NULL;
 }
 
 SR_STATIC const char *
 dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
-    mh_for_each_lc(mh, lc, {
+    mh_for_each_lc(mh, lc) {
         switch (lc->cmd) {
             case LC_LOAD_DYLIB:
             case LC_LOAD_WEAK_DYLIB:
@@ -273,7 +278,7 @@ dylib_name_for_ordinal(mach_header_t mh, uintptr_t ordinal) {
                 }
             }
         }
-    })
+    }
 
     __builtin_unreachable();
 }
@@ -291,20 +296,19 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
     mach_header_t mh = symrez->header;
     intptr_t slide = symrez->slide;
     
-    struct symtab_command *symtab = NULL;
     segment_command_t linkedit = find_lc_segment(mh, SEG_LINKEDIT);
     if (unlikely(!linkedit)) {
         return 0;
     }
     
-    symtab = (symtab_t)find_load_command(mh, LC_SYMTAB);
+    struct symtab_command *symtab = (void*)find_load_command(mh, LC_SYMTAB);
     if (unlikely(!symtab)) {
         return 0;
     }
     
     symrez->nsyms = symtab->nsyms;
-    symrez->strtab = (strtab_t)(linkedit->vmaddr - linkedit->fileoff) + symtab->stroff + slide;
-    symrez->symtab = (symtab_t)(linkedit->vmaddr - linkedit->fileoff) + symtab->symoff + slide;
+    symrez->strtab = (strtab_t)((linkedit->vmaddr - linkedit->fileoff) + symtab->stroff + slide);
+    symrez->symtab = (nlist64_t)((linkedit->vmaddr - linkedit->fileoff) + symtab->symoff + slide);
     
     struct linkedit_data_command *exportInfo = (struct linkedit_data_command *)find_load_command(mh, LC_DYLD_EXPORTS_TRIE);
     if (likely(exportInfo)) {
@@ -330,15 +334,13 @@ SR_INLINE mach_header_t
 find_image_by_name(const char *image_name, size_t len) {
     uint32_t block = *(uint32_t*)image_name;
     
-    dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
-    const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
-    for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
-        const char *p = info_array[i].imageFilePath;
+    sr_for_each_image_info(info) {
+        const char *p = info->imageFilePath;
         const char *img = sr_strrchr(p, '/');
 
         if (block ^ *(uint32_t*)img) continue;
         if (sr_strneq(img, image_name, len)) {
-            return (mach_header_t)(info_array[i].imageLoadAddress);
+            return (mach_header_t)(info->imageLoadAddress);
         }
     }
     
@@ -353,12 +355,10 @@ find_image(const char *image_name) {
         return find_image_by_name(image_name, name_len);
     }
 
-    dyld_all_image_infos_t dyld_all_image_infos = get_all_image_infos();
-    const struct dyld_image_info *info_array = dyld_all_image_infos->infoArray;
-    for(int i = 0; i < dyld_all_image_infos->infoArrayCount; i++) {
-        const char *p = info_array[i].imageFilePath;
+    sr_for_each_image_info(info) {
+        const char *p = info->imageFilePath;
         if (unlikely(sr_strneq(p, image_name, name_len))) {
-            return (mach_header_t)(info_array[i].imageLoadAddress);
+            return (mach_header_t)(info->imageLoadAddress);
         }
     }
 
@@ -460,14 +460,10 @@ SR_INLINE sr_iter_result_t
 sr_iter_get_next_nlist(sr_iterator_t it) {
     symrez_t sr = it->symrez;
     strtab_t strtab = sr->strtab;
-    symtab_t symtab = sr->symtab;
+    nlist64_t symtab = sr->symtab;
     intptr_t slide = sr->slide;
-    int i = it->nlist_idx;
-    uint64_t nl_addr = (uintptr_t)symtab + (i *sizeof(struct nlist_64));
     
-    for (; it->nlist_idx < sr->nsyms; it->nlist_idx++, nl_addr += sizeof(struct nlist_64)) {
-        
-        struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+    for (nlist64_t nl = &symtab[it->nlist_idx]; it->nlist_idx < sr->nsyms; it->nlist_idx++, ++nl) {
         if (nl->n_un.n_strx == 0) continue;
         if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && sr->exports)) {
             continue;
@@ -647,14 +643,12 @@ static bool sr_for_each_handle_node(symrez_t symrez, const uint8_t *node, char *
 
 void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
     strtab_t strtab = symrez->strtab;
-    symtab_t symtab = symrez->symtab;
+    nlist64_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
-    uintptr_t nl_addr = (uintptr_t)symtab;
-    uint64_t i = 0;
+
     void *addr = NULL;
-    
-    for (i = 0; i < symrez->nsyms; i++, nl_addr += sizeof(struct nlist_64)) {
-        struct nlist_64 *nl = (struct nlist_64 *)nl_addr;
+    nlist64_t end = &symtab[symrez->nsyms];
+    for (nlist64_t nl = symtab; nl < end; ++nl) {
         if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && symrez->exports)) {
             continue;
         }
@@ -676,29 +670,26 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
 
 SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     strtab_t strtab = symrez->strtab;
-    symtab_t symtab = symrez->symtab;
+    nlist64_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
     
-    void *addr = NULL;
     size_t sym_len = strlen(symbol) + 1;
     uint32_t sym_block = *(uint32_t*)symbol;
     
-    struct nlist_64 *start = (struct nlist_64 *)symtab;
-    struct nlist_64 *end = (struct nlist_64 *)&start[symrez->nsyms];
-    for (struct nlist_64 *nl = start; nl < end; ++nl) {
+    nlist64_t end = &symtab[symrez->nsyms];
+    for (nlist64_t nl = symtab; nl < end; ++nl) {
         const char *str = (const char *)strtab + nl->n_un.n_strx;
         if (likely(*(uint32_t*)str ^ sym_block)) continue;
         
         if (likely(sr_strneq(str, symbol, sym_len))) {
             uint64_t n_value = nl->n_value;
             if (likely(n_value > 0)) {
-                addr = (void *)(n_value + slide);
-                break;
+                return (void *)(n_value + slide);
             }
         }
     }
     
-    return addr;
+    return NULL;
 }
 
 SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
@@ -719,7 +710,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
 
 SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
     void *addr = NULL;
-    mh_for_each_lc(symrez->header, lc, {
+    mh_for_each_lc(symrez->header, lc) {
         switch (lc->cmd) {
             case LC_REEXPORT_DYLIB:
             case LC_LOAD_UPWARD_DYLIB: {
@@ -743,6 +734,9 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
                     addr = sr_resolve_symbol(&sr, symbol);
                 } else {
                     addr = resolve_local_symbol(&sr, symbol);
+                    if (!addr) {
+                        addr = resolve_exported_symbol(&sr, symbol);
+                    }
                 }
                 
                 if (likely(addr)) {
@@ -750,16 +744,16 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
                 }
             }
         }
-        
-    });
+    }
 
     return NULL;
 }
 
+#if __has_feature(ptrauth_calls)
 SR_INLINE bool
 is_symbol_code(symrez_t symrez, sr_ptr_t sym) {
     uint64_t addr = ((uint64_t)sym & ~0xFFFFFF0000000000ULL);
-    mh_for_each_lc(symrez->header, lc, {
+    mh_for_each_lc(symrez->header, lc) {
         if (lc->cmd != LC_SEGMENT_64) continue;
         
         segment_command_t seg = (segment_command_t)lc;
@@ -773,10 +767,11 @@ is_symbol_code(symrez_t symrez, sr_ptr_t sym) {
             if (addr > sec_max) continue;
             return ((sec->flags & S_ATTR_PURE_INSTRUCTIONS) || (sec->flags & S_ATTR_SOME_INSTRUCTIONS));
         }
-    });
+    }
     
     __builtin_unreachable();
 }
+#endif
 
 sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol) {
     void *addr = resolve_local_symbol(symrez, symbol);
