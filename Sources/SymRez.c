@@ -8,14 +8,10 @@
 
 #include "SymRez.h"
 #include <stdlib.h>
-#include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/dyld_images.h>
-#include <mach-o/getsect.h>
 #include <mach-o/nlist.h>
-#include <mach-o/getsect.h>
 #include <mach/mach_vm.h>
-#include <sys/syslimits.h>
 
 #if __has_feature(ptrauth_calls)
 #include <ptrauth.h>
@@ -84,16 +80,29 @@ struct sr_iter_result {
     sr_symbol_t symbol;
 };
 
+struct sr_symtab_iterator {
+    nlist64_t start;
+    nlist64_t end;
+    nlist64_t curr;
+} __attribute__((__aligned__(64)));
+typedef struct sr_symtab_iterator* sr_symtab_iter_t;
+
 // Should node_stack be a dynamic array?
-struct sr_iterator {
-    symrez_t symrez;
-    uint32_t nlist_idx;
+struct sr_export_iterator {
+    void *start;
     int32_t stack_top;
     struct stack_node {
         const uint8_t* node;
         char sym[2048];
         size_t sym_len;
     } node_stack[SR_ITER_STACK_DEPTH];
+} __attribute__((__aligned__(64)));
+typedef struct sr_export_iterator* sr_export_iter_t;
+
+struct sr_iterator {
+    symrez_t symrez;
+    struct sr_symtab_iterator symtab_iter;
+    struct sr_export_iterator export_iter;
     struct sr_iter_result result;
 } __attribute__((__aligned__(64)));
 
@@ -428,10 +437,17 @@ resolve_export_node(const uint8_t *node, mach_header_t mh, char *symbol) {
 sr_iterator_t sr_iterator_create(symrez_t symrez) {
     sr_iterator_t iterator = calloc(1, sizeof(struct sr_iterator));
     iterator->symrez = symrez;
-    iterator->nlist_idx = 0;
-    iterator->stack_top = 1;
-    iterator->node_stack[0].node = symrez->exports;
-    iterator->node_stack[0].sym_len = 0;
+    
+    iterator->symtab_iter.start = symrez->symtab;
+    iterator->symtab_iter.curr = symrez->symtab;
+    iterator->symtab_iter.end = &symrez->symtab[symrez->nsyms];
+    
+    
+    iterator->export_iter.start = symrez->exports;
+    iterator->export_iter.stack_top = 1;
+    iterator->export_iter.node_stack[0].node = symrez->exports;
+    iterator->export_iter.node_stack[0].sym_len = 0;
+    
     iterator->result.ptr = NULL;
     iterator->result.symbol = NULL;
     return iterator;
@@ -457,23 +473,23 @@ size_t sr_iter_copy_symbol(sr_iterator_t iter, char *dest) {
 }
 
 SR_INLINE sr_iter_result_t
-sr_iter_get_next_nlist(sr_iterator_t it) {
-    symrez_t sr = it->symrez;
+sr_iter_get_next_nlist(sr_iterator_t iter) {
+    sr_symtab_iter_t it = &iter->symtab_iter;
+    symrez_t sr = iter->symrez;
     strtab_t strtab = sr->strtab;
-    nlist64_t symtab = sr->symtab;
     intptr_t slide = sr->slide;
     
-    for (nlist64_t nl = &symtab[it->nlist_idx]; it->nlist_idx < sr->nsyms; it->nlist_idx++, ++nl) {
+    for (nlist64_t nl = it->curr; nl < it->end; ++nl) {
         if (nl->n_un.n_strx == 0) continue;
         if ((nl->n_type & N_STAB) || nl->n_sect == 0 || ((nl->n_type & N_EXT) && sr->exports)) {
             continue;
         }
 
         char *str = (char *)strtab + nl->n_un.n_strx;
-        it->nlist_idx += 1;
-        it->result.symbol = str;
-        it->result.ptr = (void *)(nl->n_value + slide);
-        return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
+        it->curr = ++nl;
+        iter->result.symbol = str;
+        iter->result.ptr = (void *)(nl->n_value + slide);
+        return &iter->result;
     }
     
     return NULL;
@@ -501,7 +517,8 @@ Traverse the tree in iterative order, accumulating complete symbols by appending
 suffix of the current node to the prefix of the parent node.
  */
 SR_INLINE sr_iter_result_t
-sr_iter_get_next_export(sr_iterator_t it) {
+sr_iter_get_next_export(sr_iterator_t iter) {
+    sr_export_iter_t it = &iter->export_iter;
     if (unlikely(it->stack_top == 0)) {
         return NULL;
     }
@@ -532,9 +549,9 @@ sr_iter_get_next_export(sr_iterator_t it) {
         const uint8_t* children = p + terminal_size;
         uint8_t child_count = *children++;
         if (unlikely(child_count == 0)) { // Handle leaf node
-            it->result.symbol = sym;
-            it->result.ptr = (void *)resolve_export_node(++node, it->symrez->header, sym);
-            return (sr_iter_result_t)(it+offsetof(struct sr_iterator, result));
+            iter->result.symbol = sym;
+            iter->result.ptr = (void*)resolve_export_node(++node, iter->symrez->header, sym);
+            return &iter->result;
         }
         
         p = children;
@@ -569,8 +586,7 @@ sr_iter_get_next_export(sr_iterator_t it) {
             
             uintptr_t nodeOffset = read_uleb128((void**)&p);
             if (likely(nodeOffset != 0)) {
-                void *export_trie = it->symrez->exports;
-                const uint8_t *start = export_trie;
+                const uint8_t *start = it->start;
                 it->node_stack[it->stack_top].node = &start[nodeOffset];
             }
         }
@@ -580,11 +596,11 @@ sr_iter_get_next_export(sr_iterator_t it) {
 }
 
 sr_iter_result_t sr_iter_get_next(sr_iterator_t it) {
-    symrez_t sr = it->symrez;
     it->result.ptr = NULL;
     it->result.symbol = NULL;
     
-    if (it->nlist_idx < sr->nsyms) {
+    struct sr_symtab_iterator symtab_iter = it->symtab_iter;
+    if (symtab_iter.curr < symtab_iter.end) {
         sr_iter_result_t ret = sr_iter_get_next_nlist(it);
         if (likely(ret != NULL)) {
             return ret;
