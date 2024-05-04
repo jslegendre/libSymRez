@@ -18,9 +18,16 @@ let package = Package(
             name: "SymRez",
             dependencies: [],
             path: "Sources",
+            publicHeadersPath: "include",
             cSettings: [
+                .headerSearchPath("include"),
                 .unsafeFlags(["-fno-modules"]),
-                .unsafeFlags(["-Os", "-momit-leaf-frame-pointer", "-foptimize-sibling-calls"], .when(configuration: .release)),
+                .unsafeFlags(["-Os", 
+                              "-momit-leaf-frame-pointer",
+                              "-foptimize-sibling-calls",
+                              "-fno-stack-protector",
+                              "-fno-stack-check"],
+                    .when(configuration: .release)),
             ]
         ),
         .testTarget(

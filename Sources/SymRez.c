@@ -6,7 +6,7 @@
 //  Copyright © 2020 Jeremy Legendre. All rights reserved.
 //
 
-#include "SymRez.h"
+#include <SymRez/SymRez.h>
 #include <stdlib.h>
 #include <mach-o/dyld.h>
 #include <mach-o/dyld_images.h>
@@ -111,13 +111,13 @@ sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
     size_t offset = 0;
     size_t current_block = 0;
     
-    if(len < sizeof(size_t)) {
+    if(unlikely(len < sizeof(uint64_t))) {
         goto finish;
     }
     
-    size_t *lptr0 = (size_t*)ptr0;
-    size_t *lptr1 = (size_t*)ptr1;
-    size_t fast = len / sizeof(size_t);
+    uint64_t *lptr0 = (uint64_t*)ptr0;
+    uint64_t *lptr1 = (uint64_t*)ptr1;
+    uint64_t fast = len / sizeof(uint64_t);
     
     while(current_block < fast) {
         if (lptr0[current_block] ^ lptr1[current_block]) {
@@ -127,20 +127,21 @@ sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
         ++current_block;
     }
     
-    offset = current_block * sizeof(size_t);
+    offset = current_block * sizeof(uint64_t);
     
 finish:
     ptr0 += offset;
     ptr1 += offset;
-    do {
+    
+    while (likely(offset++ < len)) {
         if (*ptr0 != *ptr1++) {
             return false;
         }
         
-        if (*ptr0++ == '\0') {
+        if (unlikely(*ptr0++ == '\0')) {
             break;
         }
-    } while (++offset < len);
+    }
     
     return true;
 }
@@ -230,21 +231,28 @@ walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
     return NULL;
 }
 
-SR_STATIC dyld_all_image_infos_t
-get_all_image_infos(void) {
-    static dyld_all_image_infos_t _g_all_image_infos = NULL;
-    if (unlikely(!_g_all_image_infos)) {
-        task_dyld_info_data_t dyld_info;
-        mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
-        kern_return_t kr = task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyld_info, &count);
-        if (unlikely(kr != KERN_SUCCESS)) {
-            return NULL;
-        }
-        
-        _g_all_image_infos = (void*)(dyld_info.all_image_info_addr);
-        __builtin_assume(_g_all_image_infos != NULL);
+SR_STATIC OS_NOINLINE
+dyld_all_image_infos_t _get_dyld_info(void) {
+    task_dyld_info_data_t dyld_info;
+    mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
+    kern_return_t kr = task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&dyld_info, &count);
+    if (unlikely(kr != KERN_SUCCESS)) {
+        return NULL;
     }
     
+    return (dyld_all_image_infos_t)(dyld_info.all_image_info_addr);
+}
+
+SR_STATIC OS_PURE
+dyld_all_image_infos_t get_all_image_infos(void) {
+    static dyld_all_image_infos_t _g_all_image_infos = NULL;
+    if (unlikely(!_g_all_image_infos)) {
+        _g_all_image_infos = _get_dyld_info();
+    } else {
+        __asm__ __volatile__("" ::: "memory");
+    }
+    
+    __builtin_assume(_g_all_image_infos != NULL);
     return _g_all_image_infos;
 }
 
@@ -398,12 +406,12 @@ get_base_addr(void) {
 }
 
 SR_INLINE void *
-resolve_export_node(const uint8_t *node, mach_header_t mh, char *symbol) {
+resolve_export_node(const uint8_t *node, mach_header_t mh, const char *symbol) {
     void *addr = NULL;
     uintptr_t flags = read_uleb128((void**)&node);
     if (flags & EXPORT_SYMBOL_FLAGS_REEXPORT) {
         uintptr_t ordinal = read_uleb128((void**)&node);
-        char* importedName = (char*)node;
+        const char* importedName = (const char*)node;
         if (!importedName || strlen(importedName) == 0) {
             importedName = symbol;
         }
@@ -434,23 +442,46 @@ resolve_export_node(const uint8_t *node, mach_header_t mh, char *symbol) {
     return addr;
 }
 
-sr_iterator_t sr_iterator_create(symrez_t symrez) {
-    sr_iterator_t iterator = calloc(1, sizeof(struct sr_iterator));
+SR_INLINE void
+_sr_iter_init_from_sr(sr_iterator_t iterator, symrez_t symrez) {
     iterator->symrez = symrez;
-    
-    iterator->symtab_iter.start = symrez->symtab;
-    iterator->symtab_iter.curr = symrez->symtab;
-    iterator->symtab_iter.end = &symrez->symtab[symrez->nsyms];
-    
-    
-    iterator->export_iter.start = symrez->exports;
-    iterator->export_iter.stack_top = 1;
-    iterator->export_iter.node_stack[0].node = symrez->exports;
-    iterator->export_iter.node_stack[0].sym_len = 0;
-    
     iterator->result.ptr = NULL;
     iterator->result.symbol = NULL;
+    
+    nlist64_t symtab = symrez->symtab;
+    void *exports = symrez->exports;
+    
+    if (likely(symtab)) {
+        iterator->symtab_iter.start = symtab;
+        iterator->symtab_iter.curr = symtab;
+        iterator->symtab_iter.end = &symtab[symrez->nsyms];
+    }
+    
+    
+    if (likely(exports)) {
+        iterator->export_iter.start = exports;
+        iterator->export_iter.stack_top = 1;
+        iterator->export_iter.node_stack[0].node = exports;
+        iterator->export_iter.node_stack[0].sym_len = 0;
+    }
+}
+
+sr_iterator_t sr_iterator_create(symrez_t symrez) {
+    sr_iterator_t iterator = calloc(1, sizeof(struct sr_iterator));
+    _sr_iter_init_from_sr(iterator, symrez);
     return iterator;
+}
+
+void sr_iter_reset(sr_iterator_t iterator) {
+    symrez_t symrez = iterator->symrez;
+    iterator->symtab_iter.curr = symrez->symtab;
+    
+    void *exports = symrez->exports;
+    if (likely(exports)) {
+        iterator->export_iter.stack_top = 1;
+        iterator->export_iter.node_stack[0].node = exports;
+        iterator->export_iter.node_stack[0].sym_len = 0;
+    }
 }
 
 sr_ptr_t sr_iter_get_ptr(sr_iterator_t iter) {
@@ -684,7 +715,7 @@ void sr_for_each(symrez_t symrez, void *context, symrez_function_t work) {
     }
 }
 
-SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
+SR_STATIC void * resolve_local_symbol(symrez_t symrez, const char *symbol) {
     strtab_t strtab = symrez->strtab;
     nlist64_t symtab = symrez->symtab;
     intptr_t slide = symrez->slide;
@@ -707,8 +738,8 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, char *symbol) {
     
     return NULL;
 }
-
-SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
+ 
+sr_ptr_t sr_resolve_exported(symrez_t symrez, const char *symbol) {
     if (unlikely(!symrez->exports_size)) {
         return NULL;
     }
@@ -724,7 +755,7 @@ SR_STATIC void * resolve_exported_symbol(symrez_t symrez, char *symbol) {
     return addr;
 }
 
-SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
+SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, const char *symbol) {
     void *addr = NULL;
     mh_for_each_lc(symrez->header, lc) {
         switch (lc->cmd) {
@@ -751,7 +782,7 @@ SR_STATIC void* resolve_dependent_symbol(symrez_t symrez, char *symbol) {
                 } else {
                     addr = resolve_local_symbol(&sr, symbol);
                     if (!addr) {
-                        addr = resolve_exported_symbol(&sr, symbol);
+                        addr = sr_resolve_exported(&sr, symbol);
                     }
                 }
                 
@@ -789,11 +820,11 @@ is_symbol_code(symrez_t symrez, sr_ptr_t sym) {
 }
 #endif
 
-sr_ptr_t sr_resolve_symbol(symrez_t symrez, char *symbol) {
+sr_ptr_t sr_resolve_symbol(symrez_t symrez, const char *symbol) {
     void *addr = resolve_local_symbol(symrez, symbol);
     
     if (unlikely(!addr)) {
-        addr = resolve_exported_symbol(symrez, symbol);
+        addr = sr_resolve_exported(symrez, symbol);
         if (unlikely(!addr)) {
             addr = resolve_dependent_symbol(symrez, symbol);
         }
@@ -860,7 +891,7 @@ bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header) {
     return true;
 }
 
-sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
+sr_ptr_t symrez_resolve_once_mh(mach_header_t header, const char *symbol) {
     struct symrez sr;
     if (unlikely(!symrez_init_mh(&sr, header))) {
         return NULL;
@@ -869,7 +900,7 @@ sr_ptr_t symrez_resolve_once_mh(mach_header_t header, char *symbol) {
     return sr_resolve_symbol(&sr, symbol);
 }
 
-sr_ptr_t symrez_resolve_once(char *image_name, char *symbol) {
+sr_ptr_t symrez_resolve_once(const char *image_name, const char *symbol) {
     mach_header_t hdr = NULL;
     
     if(unlikely(!(hdr = find_image(image_name)))) {
@@ -893,7 +924,7 @@ symrez_t symrez_new_mh(mach_header_t mach_header) {
     return symrez;
 }
 
-symrez_t symrez_new(char *image_name) {
+symrez_t symrez_new(const char *image_name) {
     
     mach_header_t hdr = NULL;
     if(unlikely(!(hdr = find_image(image_name)))) {

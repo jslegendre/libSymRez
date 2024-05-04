@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0980EE312446A5B500F28911 /* SymRez.h in Headers */ = {isa = PBXBuildFile; fileRef = 0980EE2F2446A5B500F28911 /* SymRez.h */; };
 		0980EE322446A5B500F28911 /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
 		0986822327719CC100E01D0D /* Tests.m in Sources */ = {isa = PBXBuildFile; fileRef = 0986822227719CC100E01D0D /* Tests.m */; };
 		0986822427719CC100E01D0D /* libSymRez.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0980EE282446A37A00F28911 /* libSymRez.dylib */; };
 		0986822A27719DD600E01D0D /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
+		3F0B25122BE6830100ED3840 /* Base.h in Headers */ = {isa = PBXBuildFile; fileRef = 3F0B250D2BE6830100ED3840 /* Base.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		3F0B25132BE6830100ED3840 /* Core.h in Headers */ = {isa = PBXBuildFile; fileRef = 3F0B250E2BE6830100ED3840 /* Core.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		3F0B25142BE6830100ED3840 /* SymRez.h in Headers */ = {isa = PBXBuildFile; fileRef = 3F0B25102BE6830100ED3840 /* SymRez.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		3F0B25152BE6834700ED3840 /* module.modulemap in Headers */ = {isa = PBXBuildFile; fileRef = 3F0B250F2BE6830100ED3840 /* module.modulemap */; settings = {ATTRIBUTES = (Public, ); }; };
 		3F4D81C229E79DAF0064FEE4 /* PerformanceTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */; };
 /* End PBXBuildFile section */
 
@@ -26,12 +29,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0970FE212771B5C600B3012D /* module.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; name = module.modulemap; path = Sources/include/module.modulemap; sourceTree = "<group>"; };
 		0980EE282446A37A00F28911 /* libSymRez.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = libSymRez.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
-		0980EE2F2446A5B500F28911 /* SymRez.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SymRez.h; path = Sources/include/SymRez.h; sourceTree = "<group>"; };
 		0980EE302446A5B500F28911 /* SymRez.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = SymRez.c; path = Sources/SymRez.c; sourceTree = "<group>"; };
 		0986822027719CC100E01D0D /* Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0986822227719CC100E01D0D /* Tests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests.m; sourceTree = "<group>"; };
+		3F0B250D2BE6830100ED3840 /* Base.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Base.h; sourceTree = "<group>"; };
+		3F0B250E2BE6830100ED3840 /* Core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Core.h; sourceTree = "<group>"; };
+		3F0B250F2BE6830100ED3840 /* module.modulemap */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = "sourcecode.module-map"; path = module.modulemap; sourceTree = "<group>"; };
+		3F0B25102BE6830100ED3840 /* SymRez.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SymRez.h; sourceTree = "<group>"; };
 		3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PerformanceTests.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -57,8 +62,7 @@
 		0980EE1F2446A37A00F28911 = {
 			isa = PBXGroup;
 			children = (
-				0980EE2F2446A5B500F28911 /* SymRez.h */,
-				0970FE212771B5C600B3012D /* module.modulemap */,
+				3F0B25112BE6830100ED3840 /* SymRez */,
 				0980EE302446A5B500F28911 /* SymRez.c */,
 				0986822127719CC100E01D0D /* Tests */,
 				0980EE292446A37A00F28911 /* Products */,
@@ -83,6 +87,18 @@
 			path = Tests;
 			sourceTree = "<group>";
 		};
+		3F0B25112BE6830100ED3840 /* SymRez */ = {
+			isa = PBXGroup;
+			children = (
+				3F0B250D2BE6830100ED3840 /* Base.h */,
+				3F0B250E2BE6830100ED3840 /* Core.h */,
+				3F0B250F2BE6830100ED3840 /* module.modulemap */,
+				3F0B25102BE6830100ED3840 /* SymRez.h */,
+			);
+			name = SymRez;
+			path = Sources/include/SymRez;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -90,7 +106,10 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0980EE312446A5B500F28911 /* SymRez.h in Headers */,
+				3F0B25152BE6834700ED3840 /* module.modulemap in Headers */,
+				3F0B25122BE6830100ED3840 /* Base.h in Headers */,
+				3F0B25142BE6830100ED3840 /* SymRez.h in Headers */,
+				3F0B25132BE6830100ED3840 /* Core.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,7 +158,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1530;
 				ORGANIZATIONNAME = "Jeremy Legendre";
 				TargetAttributes = {
 					0980EE272446A37A00F28911 = {
@@ -328,11 +347,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLY_RULES_IN_COPY_HEADERS = YES;
-				ARCHS = (
-					arm64e,
-					x86_64,
-				);
+				ARCHS = "$(ARCHS_STANDARD)";
 				BUILD_LIBRARY_FOR_DISTRIBUTION = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = NO;
 				CLANG_OPTIMIZATION_PROFILE_FILE = "";
 				CODE_SIGN_STYLE = Automatic;
@@ -343,13 +360,16 @@
 				DYLIB_CURRENT_VERSION = 1;
 				ENABLE_MODULE_VERIFIER = YES;
 				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = c17;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_UNROLL_LOOPS = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				LLVM_LTO = NO;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MODULEMAP_FILE = "";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "";
+				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = "-fno-modules";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -360,11 +380,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLY_RULES_IN_COPY_HEADERS = YES;
-				ARCHS = (
-					arm64e,
-					x86_64,
-				);
+				ARCHS = "$(ARCHS_STANDARD)";
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = NO;
 				CLANG_OPTIMIZATION_PROFILE_FILE = "";
 				CODE_SIGN_STYLE = Automatic;
@@ -375,16 +393,22 @@
 				DYLIB_CURRENT_VERSION = 1;
 				ENABLE_MODULE_VERIFIER = YES;
 				EXECUTABLE_PREFIX = lib;
+				GCC_C_LANGUAGE_STANDARD = c17;
+				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_UNROLL_LOOPS = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
 				LLVM_LTO = NO;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MODULEMAP_FILE = "";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c";
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "";
+				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
 					"-momit-leaf-frame-pointer",
 					"-fno-modules",
 					"-foptimize-sibling-calls",
+					"-fno-stack-protector",
+					"-fno-stack-check",
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -395,12 +419,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
+				GCC_C_LANGUAGE_STANDARD = c17;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_UNROLL_LOOPS = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -408,7 +433,7 @@
 				LLVM_LTO = NO;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 1.0;
-				OTHER_CFLAGS = "-fno-modules";
+				OTHER_CFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -419,12 +444,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
+				GCC_C_LANGUAGE_STANDARD = c17;
 				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_UNROLL_LOOPS = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -432,10 +458,12 @@
 				LLVM_LTO = NO;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
 					"-foptimize-sibling-calls",
 					"-momit-leaf-frame-pointer",
-					"-fno-modules",
+					"-fno-stack-protector",
+					"-fno-stack-check",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.jslegendre.Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
