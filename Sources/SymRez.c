@@ -22,7 +22,7 @@
 #endif
 
 #ifndef SR_STATIC
-  #ifdef DEBUG
+  #if defined(DEBUG)
     #define SR_STATIC
   #else
     #define SR_STATIC static
@@ -39,6 +39,14 @@
 
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
+
+#define _strlen strlen
+#undef strlen
+#define strlen(x) \
+__builtin_constant_p(x) ? sizeof(x) : _strlen(x)
+
+#define sr_strneq(x,y,z) \
+!strncmp(x,y,z)
 
 #define mh_for_each_lc(mh, lc) \
 for (struct load_command *lc = (struct load_command*)((uint64_t)mh + sizeof(struct mach_header_64)); \
@@ -106,46 +114,6 @@ struct sr_iterator {
     struct sr_iter_result result;
 } __attribute__((__aligned__(64)));
 
-SR_STATIC bool
-sr_strneq(const char *ptr0, const char *ptr1, size_t len) {
-    size_t offset = 0;
-    size_t current_block = 0;
-    
-    if(unlikely(len < sizeof(uint64_t))) {
-        goto finish;
-    }
-    
-    uint64_t *lptr0 = (uint64_t*)ptr0;
-    uint64_t *lptr1 = (uint64_t*)ptr1;
-    uint64_t fast = len / sizeof(uint64_t);
-    
-    while(current_block < fast) {
-        if (lptr0[current_block] ^ lptr1[current_block]) {
-            break;
-        }
-        
-        ++current_block;
-    }
-    
-    offset = current_block * sizeof(uint64_t);
-    
-finish:
-    ptr0 += offset;
-    ptr1 += offset;
-    
-    while (likely(offset++ < len)) {
-        if (*ptr0 != *ptr1++) {
-            return false;
-        }
-        
-        if (unlikely(*ptr0++ == '\0')) {
-            break;
-        }
-    }
-    
-    return true;
-}
-
 SR_INLINE const char * _Nullable
 sr_strrchr(const char *s, int c) {
     size_t len = strlen(s) - 1;
@@ -159,7 +127,7 @@ sr_strrchr(const char *s, int c) {
     return NULL;
 }
 
-SR_INLINE uint64_t 
+SR_INLINE uint64_t
 read_uleb128(void** ptr) {
     uint8_t *p = *ptr;
     uint64_t result = 0;
@@ -178,7 +146,7 @@ read_uleb128(void** ptr) {
 SR_STATIC const uint8_t* 
 walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
     const uint8_t* p = start;
-    while (p != NULL) {
+    while (unlikely(p < end)) {
         uintptr_t terminal_size = *p++;
         
         if (unlikely(terminal_size > 127)) {
@@ -202,31 +170,29 @@ walk_export_trie(const uint8_t* start, const uint8_t* end, const char* symbol) {
         for (; childrenRemaining > 0; --childrenRemaining) {
             const char* ss = symbol;
             bool wrong_edge = false;
-            const uint8_t *child = p;
             
-            size_t child_len = strlen((char*)p);
-            char c = *child;
-            while (c != '\0') {
-                if (likely((c ^ *ss++) > 0)) {
-                    wrong_edge = true;
-                    break;
+            while (likely(*p != '\0')) {
+                if (!wrong_edge) {
+                    if (*p != *ss++) {
+                        wrong_edge = true;
+                    }
                 }
-                ++child;
-                c = *child;
+                ++p;
             }
+            ++p;
             
-            p += child_len + 1;
-            node_offset = read_uleb128((void**)&p);
             if (likely(wrong_edge)) {
                 node_offset = 0;
+                while ((*p++ & 0x80) != 0) {}
             } else {
+                node_offset = read_uleb128((void**)&p);
                 p = &start[node_offset];
                 symbol = ss;
                 break;
             }
         }
         
-        if (unlikely(!node_offset || p > end)) break;
+        if (unlikely(!node_offset)) break;
     }
     return NULL;
 }
@@ -256,18 +222,23 @@ dyld_all_image_infos_t get_all_image_infos(void) {
     return _g_all_image_infos;
 }
 
-SR_INLINE segment_command_t
-find_lc_segment(mach_header_t mh, const char *segname) {
+SR_INLINE OS_OVERLOADABLE segment_command_t
+find_lc_segment(mach_header_t mh, const char *segname, size_t len) {
     mh_for_each_lc(mh, lc) {
         if (lc->cmd == LC_SEGMENT_64) {
             segment_command_t seg = (segment_command_t)lc;
-            if (sr_strneq(seg->segname, segname, 16)) {
+            if (sr_strneq(seg->segname, segname, len)) {
                 return seg;
             }
         }
     }
     
     return NULL;
+}
+
+SR_INLINE segment_command_t
+find_lc_segment(mach_header_t mh, const char *segname) {
+    return find_lc_segment(mh, segname, strlen(segname));
 }
 
 SR_INLINE load_command_t
@@ -350,7 +321,6 @@ SR_STATIC int find_linkedit_commands(symrez_t symrez) {
 SR_INLINE mach_header_t
 find_image_by_name(const char *image_name, size_t len) {
     uint32_t block = *(uint32_t*)image_name;
-    
     sr_for_each_image_info(info) {
         const char *p = info->imageFilePath;
         const char *img = sr_strrchr(p, '/');
@@ -409,12 +379,13 @@ SR_INLINE void *
 resolve_export_node(const uint8_t *node, mach_header_t mh, const char *symbol) {
     void *addr = NULL;
     uintptr_t flags = read_uleb128((void**)&node);
-    if (flags & EXPORT_SYMBOL_FLAGS_REEXPORT) {
+    if (unlikely(flags & EXPORT_SYMBOL_FLAGS_REEXPORT)) {
         uintptr_t ordinal = read_uleb128((void**)&node);
         const char* importedName = (const char*)node;
-        if (!importedName || strlen(importedName) == 0) {
+        if (!importedName || importedName[0] == '\0') {
             importedName = symbol;
         }
+
         const char *dylib = dylib_name_for_ordinal(mh, ordinal);
         
         if (unlikely(!dylib)) return NULL;
@@ -426,7 +397,7 @@ resolve_export_node(const uint8_t *node, mach_header_t mh, const char *symbol) {
         
         return sr_resolve_symbol(&sr, importedName);
     }
-    
+
     switch (flags & EXPORT_SYMBOL_FLAGS_KIND_MASK) {
         case EXPORT_SYMBOL_FLAGS_KIND_REGULAR: {
             uint64_t offset = read_uleb128((void**)&node);
@@ -439,6 +410,7 @@ resolve_export_node(const uint8_t *node, mach_header_t mh, const char *symbol) {
         default:
             break;
     }
+    
     return addr;
 }
 
@@ -726,7 +698,7 @@ SR_STATIC void * resolve_local_symbol(symrez_t symrez, const char *symbol) {
     nlist64_t end = &symtab[symrez->nsyms];
     for (nlist64_t nl = symtab; nl < end; ++nl) {
         const char *str = (const char *)strtab + nl->n_un.n_strx;
-        if (likely(*(uint32_t*)str ^ sym_block)) continue;
+        if (likely(*(uint32_t*)str != sym_block)) continue;
         
         if (likely(sr_strneq(str, symbol, sym_len))) {
             uint64_t n_value = nl->n_value;
