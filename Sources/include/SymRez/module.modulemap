@@ -1,4 +1,4 @@
 module SymRez [system] {
-    umbrella header "SymRez.h"
+    header "SymRez.h"
     export *
 }

@@ -21,7 +21,6 @@ let package = Package(
             publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("include"),
-                .unsafeFlags(["-fno-modules"]),
                 .unsafeFlags(["-Os", 
                               "-momit-leaf-frame-pointer",
                               "-foptimize-sibling-calls",
@@ -34,5 +33,7 @@ let package = Package(
             name: "SymRezTests",
             dependencies: ["SymRez"],
             path: "Tests"),
-    ]
+    ],
+    cLanguageStandard: .c17,
+    cxxLanguageStandard: .cxx17
 )

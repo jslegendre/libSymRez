@@ -11,6 +11,6 @@
 
 #include <SymRez/Base.h>
 #include <SymRez/Core.h>
-
+#include <SymRez/cpp/SymRez.hpp>
 
 #endif /* SymRez_h */
