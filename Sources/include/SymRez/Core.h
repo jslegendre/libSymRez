@@ -1,10 +1,9 @@
 #ifndef __SYMREZ_CORE__
 #define __SYMREZ_CORE__
 
-#include <SymRez/Base.h>
-
-OS_ASSUME_NONNULL_BEGIN
 __BEGIN_DECLS
+#include <SymRez/Base.h>
+OS_ASSUME_NONNULL_BEGIN
 
 /*!
  * @define SR_EXEC_HDR
@@ -228,7 +227,6 @@ sr_iter_next_symbol(sr_iterator_t iterator) {
     return sr_iter_get_symbol(iterator);
 }
 
-__END_DECLS
 OS_ASSUME_NONNULL_END
-
+__END_DECLS
 #endif

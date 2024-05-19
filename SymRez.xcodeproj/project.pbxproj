@@ -13,9 +13,9 @@
 		0986822A27719DD600E01D0D /* SymRez.c in Sources */ = {isa = PBXBuildFile; fileRef = 0980EE302446A5B500F28911 /* SymRez.c */; };
 		3F0B25192BE6890B00ED3840 /* TestCpp.mm in Sources */ = {isa = PBXBuildFile; fileRef = 3F0B25182BE6890B00ED3840 /* TestCpp.mm */; };
 		3F4D81C229E79DAF0064FEE4 /* PerformanceTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */; };
+		3F9C53CA2BEF134D005DC381 /* SymRez.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 3F9C53C92BEF134D005DC381 /* SymRez.hpp */; settings = {ATTRIBUTES = (Public, ); }; };
 		3FD1974E2BEA6D3A005435F8 /* SymRez.h in Headers */ = {isa = PBXBuildFile; fileRef = 3FD197482BEA6D3A005435F8 /* SymRez.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		3FD1974F2BEA6D3A005435F8 /* Base.h in Headers */ = {isa = PBXBuildFile; fileRef = 3FD197492BEA6D3A005435F8 /* Base.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		3FD197502BEA6D3A005435F8 /* SymRez.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 3FD1974A2BEA6D3A005435F8 /* SymRez.hpp */; settings = {ATTRIBUTES = (Public, ); }; };
 		3FD197512BEA6D3A005435F8 /* Core.h in Headers */ = {isa = PBXBuildFile; fileRef = 3FD1974C2BEA6D3A005435F8 /* Core.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		3FD197522BEA6D58005435F8 /* module.modulemap in Headers */ = {isa = PBXBuildFile; fileRef = 3FD1974D2BEA6D3A005435F8 /* module.modulemap */; settings = {ATTRIBUTES = (Public, ); }; };
 /* End PBXBuildFile section */
@@ -37,9 +37,9 @@
 		0986822227719CC100E01D0D /* Tests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Tests.m; sourceTree = "<group>"; };
 		3F0B25182BE6890B00ED3840 /* TestCpp.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = TestCpp.mm; sourceTree = "<group>"; };
 		3F4D81C129E79DAF0064FEE4 /* PerformanceTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PerformanceTests.m; sourceTree = "<group>"; };
+		3F9C53C92BEF134D005DC381 /* SymRez.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = SymRez.hpp; path = Sources/include/SymRez/SymRez.hpp; sourceTree = "<group>"; };
 		3FD197482BEA6D3A005435F8 /* SymRez.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SymRez.h; path = Sources/include/SymRez/SymRez.h; sourceTree = "<group>"; };
 		3FD197492BEA6D3A005435F8 /* Base.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Base.h; path = Sources/include/SymRez/Base.h; sourceTree = "<group>"; };
-		3FD1974A2BEA6D3A005435F8 /* SymRez.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = SymRez.hpp; sourceTree = "<group>"; };
 		3FD1974C2BEA6D3A005435F8 /* Core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Core.h; path = Sources/include/SymRez/Core.h; sourceTree = "<group>"; };
 		3FD1974D2BEA6D3A005435F8 /* module.modulemap */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = "sourcecode.module-map"; name = module.modulemap; path = Sources/include/SymRez/module.modulemap; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -92,25 +92,24 @@
 			path = Tests;
 			sourceTree = "<group>";
 		};
+		3F9C53C82BEF1325005DC381 /* cpp */ = {
+			isa = PBXGroup;
+			children = (
+				3F9C53C92BEF134D005DC381 /* SymRez.hpp */,
+			);
+			name = cpp;
+			sourceTree = "<group>";
+		};
 		3FD197472BEA6D23005435F8 /* Public Headers */ = {
 			isa = PBXGroup;
 			children = (
 				3FD197492BEA6D3A005435F8 /* Base.h */,
 				3FD1974C2BEA6D3A005435F8 /* Core.h */,
-				3FD1974B2BEA6D3A005435F8 /* cpp */,
+				3F9C53C82BEF1325005DC381 /* cpp */,
 				3FD1974D2BEA6D3A005435F8 /* module.modulemap */,
 				3FD197482BEA6D3A005435F8 /* SymRez.h */,
 			);
 			name = "Public Headers";
-			sourceTree = "<group>";
-		};
-		3FD1974B2BEA6D3A005435F8 /* cpp */ = {
-			isa = PBXGroup;
-			children = (
-				3FD1974A2BEA6D3A005435F8 /* SymRez.hpp */,
-			);
-			name = cpp;
-			path = Sources/include/SymRez/cpp;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -120,11 +119,11 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F9C53CA2BEF134D005DC381 /* SymRez.hpp in Headers */,
 				3FD1974F2BEA6D3A005435F8 /* Base.h in Headers */,
 				3FD197512BEA6D3A005435F8 /* Core.h in Headers */,
 				3FD197522BEA6D58005435F8 /* module.modulemap in Headers */,
 				3FD1974E2BEA6D3A005435F8 /* SymRez.h in Headers */,
-				3FD197502BEA6D3A005435F8 /* SymRez.hpp in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,9 +177,11 @@
 				TargetAttributes = {
 					0980EE272446A37A00F28911 = {
 						CreatedOnToolsVersion = 11.1;
+						LastSwiftMigration = 1530;
 					};
 					0986821F27719CC100E01D0D = {
 						CreatedOnToolsVersion = 13.2;
+						LastSwiftMigration = 1530;
 					};
 				};
 			};
@@ -366,7 +367,7 @@
 				ARCHS = "$(ARCHS_STANDARD)";
 				BUILD_LIBRARY_FOR_DISTRIBUTION = NO;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
-				CLANG_ENABLE_MODULES = NO;
+				CLANG_ENABLE_MODULES = YES;
 				CLANG_OPTIMIZATION_PROFILE_FILE = "";
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
@@ -376,7 +377,10 @@
 				DYLIB_CURRENT_VERSION = 1;
 				ENABLE_MODULE_VERIFIER = YES;
 				EXECUTABLE_PREFIX = lib;
-				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_C_LANGUAGE_STANDARD = c17;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_UNROLL_LOOPS = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
@@ -403,7 +407,7 @@
 				ARCHS = "$(ARCHS_STANDARD)";
 				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
-				CLANG_ENABLE_MODULES = NO;
+				CLANG_ENABLE_MODULES = YES;
 				CLANG_OPTIMIZATION_PROFILE_FILE = "";
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
@@ -413,7 +417,10 @@
 				DYLIB_CURRENT_VERSION = 1;
 				ENABLE_MODULE_VERIFIER = YES;
 				EXECUTABLE_PREFIX = lib;
-				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_C_LANGUAGE_STANDARD = c17;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = NO;
 				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_UNROLL_LOOPS = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/include";
@@ -444,12 +451,16 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
-				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_C_LANGUAGE_STANDARD = c17;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_UNROLL_LOOPS = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -469,12 +480,16 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_ENABLE_MODULES = YES;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = G9T88PYL48;
-				GCC_C_LANGUAGE_STANDARD = c11;
+				GCC_C_LANGUAGE_STANDARD = c17;
+				GCC_ENABLE_CPP_EXCEPTIONS = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 				GCC_OPTIMIZATION_LEVEL = s;
 				GCC_UNROLL_LOOPS = NO;
 				GENERATE_INFOPLIST_FILE = YES;

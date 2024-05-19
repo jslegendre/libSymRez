@@ -28,7 +28,7 @@ public:
         
         struct IteratorEntry {
         public:
-            inline std::string_view name() const {
+            inline const std::string_view& name() const {
                 return name_;
             }
             
@@ -133,28 +133,18 @@ public:
     
     using IteratorEntry = SymRez::iterator::IteratorEntry;
     
-    inline constexpr SymRez(const std::string_view& image_name) 
-    : symrez_(symrez_new(image_name.data())) {
-        if (!symrez_) [[unlikely]] {
-            throw std::runtime_error("SymRez: symrez_new returned NULL");
-        }
-    }
+    inline SymRez(const std::string_view& image_name)
+    : symrez_(symrez_new(image_name.data()), sr_free) {}
     
-    inline constexpr SymRez(mach_header_t& header) : symrez_(symrez_new_mh(header)) {
-        if (!symrez_) [[unlikely]] {
-            throw std::runtime_error("SymRez: symrez_new returned NULL");
-        }
-    }
-    
-    inline ~SymRez() {
-        if (symrez_) [[likely]] {
-            sr_free(symrez_);
-        }
-    }
+    inline SymRez(mach_header_t& header)
+    : symrez_(symrez_new_mh(header), sr_free) {}
     
     SymRez(const SymRez&) = delete;
     SymRez& operator=(const SymRez&) = delete;
     
+    inline explicit operator bool() const {
+        return bool(symrez_);
+    }
     
     static inline void* ResolveOnce(const std::string_view& image_name, const std::string_view& symbol) {
         return symrez_resolve_once(image_name.data(), symbol.data());
@@ -166,16 +156,16 @@ public:
     
     template<typename ReturnType, typename... Args, typename FunctionType = ReturnType(*)(Args...)>
     inline FunctionType resolveSymbol(const std::string_view& symbol) const {
-        return reinterpret_cast<FunctionType>(sr_resolve_symbol(symrez_, symbol.data()));
+        return reinterpret_cast<FunctionType>(sr_resolve_symbol(symrez_.get(), symbol.data()));
     }
     
     template<typename ReturnType, typename... Args, typename FunctionType = ReturnType(*)(Args...)>
     inline FunctionType resolveExportedSymbol(const std::string_view& symbol) const {
-        return reinterpret_cast<FunctionType>(sr_resolve_exported(symrez_, symbol.data()));
+        return reinterpret_cast<FunctionType>(sr_resolve_exported(symrez_.get(), symbol.data()));
     }
     
     inline iterator begin() const {
-        sr_iterator_t it = sr_get_iterator(symrez_);
+        sr_iterator_t it = sr_get_iterator(symrez_.get());
         sr_iter_reset(it);
         sr_iter_get_next(it);
         return iterator(it);
@@ -186,15 +176,16 @@ public:
     }
 
     inline sr_contexpr_14 void setSlide(intptr_t slide) const {
-        sr_set_slide(symrez_, slide);
+        sr_set_slide(symrez_.get(), slide);
     }
     
     inline constexpr intptr_t getSlide() const {
-        return sr_get_slide(symrez_);
+        return sr_get_slide(symrez_.get());
     }
     
 private:
-    symrez_t symrez_;
+    std::unique_ptr<symrez, decltype(&sr_free)> symrez_;
+//    symrez_t symrez_;
 };
 }
 

@@ -29,9 +29,7 @@
   #endif
 #endif
 
-#ifndef SR_INLINE
-#define SR_INLINE static inline __attribute__((always_inline))
-#endif
+#define ALIGN_64 __attribute__((__aligned__(64)))
 
 #ifndef SR_ITER_STACK_DEPTH
 #define SR_ITER_STACK_DEPTH 0x48
@@ -72,7 +70,7 @@ typedef void* strtab_t;
 
 SR_STATIC bool symrez_init_mh(symrez_t symrez, mach_header_t mach_header);
 
-struct symrez {
+struct ALIGN_64 symrez {
     mach_header_t header;
     intptr_t slide;
     nlist64_t symtab;
@@ -81,22 +79,23 @@ struct symrez {
     void *exports;
     uintptr_t exports_size;
     sr_iterator_t iterator;
-} __attribute__((__aligned__(64)));
+};
 
 struct sr_iter_result {
     sr_ptr_t ptr;
     sr_symbol_t symbol;
 };
 
-struct sr_symtab_iterator {
+typedef struct ALIGN_64 
+sr_symtab_iterator {
     nlist64_t start;
     nlist64_t end;
     nlist64_t curr;
-} __attribute__((__aligned__(64)));
-typedef struct sr_symtab_iterator* sr_symtab_iter_t;
+} *sr_symtab_iter_t;
 
 // Should node_stack be a dynamic array?
-struct sr_export_iterator {
+typedef struct ALIGN_64 
+sr_export_iterator {
     void *start;
     int32_t stack_top;
     struct stack_node {
@@ -104,15 +103,15 @@ struct sr_export_iterator {
         char sym[2048];
         size_t sym_len;
     } node_stack[SR_ITER_STACK_DEPTH];
-} __attribute__((__aligned__(64)));
-typedef struct sr_export_iterator* sr_export_iter_t;
+} *sr_export_iter_t;
 
-struct sr_iterator {
+struct ALIGN_64 sr_iterator {
     symrez_t symrez;
     struct sr_symtab_iterator symtab_iter;
     struct sr_export_iterator export_iter;
     struct sr_iter_result result;
-} __attribute__((__aligned__(64)));
+};
+
 
 SR_INLINE const char * _Nullable
 sr_strrchr(const char *s, int c) {
